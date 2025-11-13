@@ -21,3 +21,26 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/android/app/build/
+src-tauri/android/.gradle/
+src-tauri/ios/build/
+src-tauri/ios/Pods/
+*.ipa
+*.apk
+*.aab
+*.dmg
+*.msi
+*.deb
+*.AppImage
+
+# Certificates and keys (NEVER commit these!)
+*.p12
+*.mobileprovision
+*.jks
+*.keystore
+*.key
+*.cert
+*.pem
