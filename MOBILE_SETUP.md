@@ -2,12 +2,21 @@
 
 This guide provides step-by-step instructions for setting up Android and iOS builds for the Microsoft Pay Calculator app using Tauri 2.
 
+## 📱 Platform Support
+
+According to the [official Tauri documentation](https://v2.tauri.app/start/prerequisites/):
+
+| Platform | Minimum Version | Status |
+|----------|----------------|---------|
+| **iOS/iPadOS** | iOS 9+ | ✅ Supported |
+| **Android** | Android 8+ | ✅ Supported |
+
 ## ⚠️ Important Notes
 
 - **Android**: Can be set up on Windows, macOS, or Linux
 - **iOS**: Requires macOS and Xcode (cannot build iOS apps on Windows)
-- Mobile support in Tauri 2 is **experimental** but functional
-- Some features may be unstable or subject to change
+- Mobile support in Tauri 2 is **fully supported** (not experimental)
+- Use GitHub Actions for iOS builds without a Mac (see [CI_CD_SETUP.md](./CI_CD_SETUP.md))
 
 ## Android Setup
 

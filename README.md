@@ -7,12 +7,12 @@ A cross-platform pay calculator application built with Svelte 5 and Tauri 2, sup
 - Calculate Microsoft employee compensation packages
 - Support for base salary, bonuses, stock options, and more
 - Modern, responsive UI built with Svelte 5
-- Cross-platform: Desktop, Android, and iOS
+- Cross-platform: Desktop (Windows 7+, macOS 10.15+, Linux), Android 8+, and iOS 9+
 - Built with Tauri 2 for native performance
 
-## 📱 Build iOS Apps Without a Mac!
+## 📱 Build & Deploy iOS Apps Without a Mac!
 
-This project uses **GitHub Actions** to build iOS apps without needing a Mac. See [CI_CD_SETUP.md](./CI_CD_SETUP.md) for details.
+This project uses **GitHub Actions** to build iOS apps and **automatically deploy to TestFlight** without needing a Mac! See [CI_CD_SETUP.md](./CI_CD_SETUP.md) and [TESTFLIGHT_SETUP.md](./TESTFLIGHT_SETUP.md) for details.
 
 ### Quick Start for iOS Builds:
 
@@ -68,11 +68,37 @@ npm run tauri:ios:build  # Release
 **Or use GitHub Actions** (no Mac needed for iOS!):
 - See [CI_CD_SETUP.md](./CI_CD_SETUP.md)
 
+## 🏛️ Architectural Discipline
+
+This project uses the **Architectural Discipline Package (ADP)** to maintain high code quality and architectural standards.
+
+### Quick Commands
+
+```bash
+# Analyze codebase architecture
+npm run adp:analyze
+
+# Get refactoring recommendations
+npm run adp:recommend
+
+# Check architecture (JSON format)
+npm run adp:check
+```
+
+ADP automatically analyzes:
+- **TypeScript/JavaScript** files (`.ts`, `.tsx`, `.js`, `.jsx`)
+- **Rust** files (`.rs`) in `src-tauri/`
+- Code complexity, maintainability, and architectural patterns
+
+See `.adp-config.json` for configuration.
+
 ## 📚 Documentation
 
 - [TAURI_SETUP.md](./TAURI_SETUP.md) - Tauri setup and configuration
+- [DISTRIBUTION.md](./DISTRIBUTION.md) - **Complete distribution guide** 📦
 - [MOBILE_SETUP.md](./MOBILE_SETUP.md) - Mobile development setup
 - [CI_CD_SETUP.md](./CI_CD_SETUP.md) - CI/CD and building without a Mac
+- [TESTFLIGHT_SETUP.md](./TESTFLIGHT_SETUP.md) - **TestFlight deployment guide** 🚀
 
 ## 🏗️ Project Structure
 
@@ -89,16 +115,18 @@ npm run tauri:ios:build  # Release
 └── build/                 # Frontend build output
 ```
 
-## 🎯 Build Targets
+## 🎯 Build Targets & Distribution
 
 ### Desktop
-- **Windows**: MSI, NSIS installers
-- **macOS**: App bundle, DMG
-- **Linux**: DEB, AppImage
+- **Windows 7+**: MSI installer (Microsoft Store support available)
+- **macOS 10.15+**: App bundle, DMG (App Store support available)
+- **Linux** (webkit2gtk 4.1, e.g., Ubuntu 22.04+): DEB, AppImage, RPM
 
 ### Mobile
-- **Android**: APK, AAB
-- **iOS**: IPA (via GitHub Actions - no Mac needed!)
+- **Android 8+**: APK, AAB (Google Play ready)
+- **iOS/iPadOS 9+**: IPA (App Store ready, via GitHub Actions - no Mac needed!)
+
+See [DISTRIBUTION.md](./DISTRIBUTION.md) for complete distribution guide.
 
 ## 📦 Scripts
 

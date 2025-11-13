@@ -44,3 +44,7 @@ src-tauri/ios/Pods/
 *.key
 *.cert
 *.pem
+
+# ADP analysis reports (optional - can be committed if desired)
+.adp-reports/
+*.adp-report.json

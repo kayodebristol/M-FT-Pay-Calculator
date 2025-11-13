@@ -19,9 +19,20 @@
     "tauri:android:dev": "tauri android dev",
     "tauri:android:build": "tauri android build",
     "tauri:ios:dev": "tauri ios dev",
-    "tauri:ios:build": "tauri ios build"
+    "tauri:ios:build": "tauri ios build",
+    "tauri:bundle": "tauri bundle",
+    "tauri:bundle:windows": "tauri bundle --bundles msi",
+    "tauri:bundle:macos": "tauri bundle --bundles app,dmg",
+    "tauri:bundle:linux": "tauri bundle --bundles deb,appimage,rpm",
+    "tauri:build:no-bundle": "tauri build --no-bundle",
+    "adp:analyze": "tsx node_modules/@architectural-discipline/monorepo/packages/cli/src/cli.ts analyze",
+    "adp:recommend": "tsx node_modules/@architectural-discipline/monorepo/packages/cli/src/cli.ts recommend",
+    "adp:check": "tsx node_modules/@architectural-discipline/monorepo/packages/cli/src/cli.ts analyze --format json"
   },
   "devDependencies": {
+    "@architectural-discipline/cli": "github:plures/adp",
+    "@architectural-discipline/core": "github:plures/adp",
+    "@architectural-discipline/eslint-plugin": "github:plures/adp",
     "@sveltejs/adapter-auto": "^6.0.0",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.22.0",
@@ -30,7 +41,11 @@
     "@tauri-apps/cli": "^2.9.4",
     "svelte": "latest",
     "svelte-check": "^4.0.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.0.0",
     "vite": "^7.0.4"
+  },
+  "dependencies": {
+    "@architectural-discipline/monorepo": "github:plures/adp"
   }
 }

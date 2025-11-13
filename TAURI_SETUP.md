@@ -6,22 +6,46 @@ This project has been configured to use Tauri 2.9.4 for cross-platform desktop a
 
 ### Desktop Targets
 The application is configured to build for the following desktop platforms:
-- **Windows**: MSI and NSIS installers
-- **macOS**: App bundle and DMG
-- **Linux**: DEB and AppImage
 
-### Mobile Targets (Experimental)
-Tauri 2's mobile support (Android/iOS) is experimental but functional. The project has been configured for mobile builds. See the [Mobile Setup](#mobile-setup) section below for detailed instructions.
+| Platform | Minimum Version | Bundle Formats | Distribution |
+|----------|----------------|-----------------|-------------|
+| **Windows** | Windows 7+ | MSI installer | Direct download, Microsoft Store |
+| **macOS** | macOS 10.15+ | App bundle, DMG | Direct download, App Store |
+| **Linux** | Ubuntu 22.04+ (webkit2gtk 4.1) | DEB, AppImage, RPM | Direct download, repositories |
+
+### Mobile Targets
+Tauri 2 supports mobile platforms with the following requirements:
+
+| Platform | Minimum Version | Bundle Formats | Distribution |
+|----------|----------------|-----------------|-------------|
+| **iOS/iPadOS** | iOS 9+ | IPA | App Store, TestFlight |
+| **Android** | Android 8+ | APK, AAB | Google Play, Direct download |
+
+The project has been configured for mobile builds. See the [Mobile Setup](#mobile-setup) section below for detailed instructions.
+
+**Distribution**: See [DISTRIBUTION.md](./DISTRIBUTION.md) for complete distribution guide covering all platforms and app stores.
 
 ## Development
 
 ### Prerequisites
+
+#### Required for All Platforms
 - **Rust**: Install from [rustup.rs](https://rustup.rs/)
 - **Node.js**: Required for frontend dependencies
-- **Platform-specific tools**:
-  - **Windows**: Visual Studio with "Desktop development with C++" workload
-  - **macOS**: Xcode Command Line Tools
-  - **Linux**: Build essentials (gcc, libwebkit2gtk, etc.)
+
+#### Platform-Specific Requirements
+
+**Windows (Windows 7+)**:
+- Visual Studio with "Desktop development with C++" workload
+- WebView2 runtime (usually pre-installed on Windows 10+)
+
+**macOS (macOS 10.15+)**:
+- Xcode Command Line Tools
+- For iOS builds: Full Xcode installation
+
+**Linux (webkit2gtk 4.1, e.g., Ubuntu 22.04+)**:
+- Build essentials: `gcc`, `libwebkit2gtk-4.1-dev`, `libssl-dev`
+- Additional dependencies: `libayatana-appindicator3-dev`, `librsvg2-dev`
 
 ### Development Commands
 

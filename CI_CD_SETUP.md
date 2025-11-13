@@ -51,7 +51,32 @@ The following workflows are ready to use:
 3. Scroll down to **Artifacts** section
 4. Download the build files (`.ipa` for iOS, `.apk`/`.aab` for Android)
 
-## 📱 iOS Build Setup (Optional - For App Store Distribution)
+## 📱 iOS Build Setup & TestFlight Deployment
+
+The iOS workflow is configured to automatically deploy to TestFlight! See [TESTFLIGHT_SETUP.md](./TESTFLIGHT_SETUP.md) for complete instructions.
+
+### Quick TestFlight Setup:
+
+1. **Create App Store Connect API Key** (Recommended)
+   - Go to App Store Connect → Users and Access → Keys
+   - Create new key with **App Manager** role
+   - Download `.p8` file (only once!)
+
+2. **Add GitHub Secrets:**
+   - `APPSTORE_API_KEY_ID` - Your Key ID
+   - `APPSTORE_ISSUER_ID` - Your Issuer ID  
+   - `APPSTORE_API_PRIVATE_KEY` - Contents of `.p8` file
+
+3. **Build and Deploy:**
+   - Push to `main` branch with `release` build type
+   - Or manually trigger workflow with "Deploy to TestFlight" enabled
+   - Build automatically uploads to TestFlight!
+
+See [TESTFLIGHT_SETUP.md](./TESTFLIGHT_SETUP.md) for detailed instructions.
+
+---
+
+## 📱 iOS Build Setup (Legacy - Using Certificates)
 
 To sign and distribute iOS apps, you need to configure code signing secrets:
 
