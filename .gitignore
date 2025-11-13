@@ -38,12 +38,21 @@ src-tauri/ios/Pods/
 
 # Certificates and keys (NEVER commit these!)
 *.p12
+*.pfx
 *.mobileprovision
 *.jks
 *.keystore
 *.key
 *.cert
 *.pem
+*.asc
+*.gpg
+android-release-key.jks
+*.keystore
+certificate.pfx
+certificate_base64.txt
+keystore_base64.txt
+private_key_base64.txt
 
 # ADP analysis reports (optional - can be committed if desired)
 .adp-reports/

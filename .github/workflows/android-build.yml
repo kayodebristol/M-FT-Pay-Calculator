@@ -77,11 +77,24 @@ jobs:
         run: |
           npx tauri android dev || echo "Dev build completed"
 
+      - name: Setup Android Signing
+        if: github.event.inputs.build_type == 'release' && secrets.ANDROID_KEYSTORE != ''
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          # Decode and save keystore
+          echo "$ANDROID_KEYSTORE" | base64 -d > android-release-key.jks
+          # Configure signing in build.gradle (if not already configured)
+          # Tauri should handle this automatically, but we ensure keystore is available
+
       - name: Build Android App (Release)
         if: github.event.inputs.build_type == 'release'
         env:
+          ANDROID_KEYSTORE_PATH: android-release-key.jks
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'release' }}
         run: |
           npx tauri android build || echo "Release build completed"
 

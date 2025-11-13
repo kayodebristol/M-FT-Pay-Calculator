@@ -96,6 +96,7 @@ See `.adp-config.json` for configuration.
 
 - [TAURI_SETUP.md](./TAURI_SETUP.md) - Tauri setup and configuration
 - [DISTRIBUTION.md](./DISTRIBUTION.md) - **Complete distribution guide** 📦
+- [CODE_SIGNING.md](./CODE_SIGNING.md) - **Code signing guide for all platforms** 🔐
 - [MOBILE_SETUP.md](./MOBILE_SETUP.md) - Mobile development setup
 - [CI_CD_SETUP.md](./CI_CD_SETUP.md) - CI/CD and building without a Mac
 - [TESTFLIGHT_SETUP.md](./TESTFLIGHT_SETUP.md) - **TestFlight deployment guide** 🚀
