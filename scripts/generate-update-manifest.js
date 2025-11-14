@@ -94,7 +94,6 @@ for (const [platform, config] of Object.entries(platformMap)) {
   const fileName = config.name;
   const url = `${releasesBaseUrl}/${fileName}`;
   const sigFileName = `${fileName}.sig`;
-  const sigUrl = `${releasesBaseUrl}/${sigFileName}`;
   
   // For now, we'll leave signature empty - it should be populated after signing
   // The signature will be in a .sig file next to the bundle
