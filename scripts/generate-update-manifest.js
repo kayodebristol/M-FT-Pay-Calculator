@@ -105,7 +105,7 @@ for (const [platform, config] of Object.entries(platformMap)) {
 
 // Try to read signatures if .sig files exist locally
 const bundleDir = path.join(__dirname, '../src-tauri/target/release/bundle');
-for (const [platform, config] of Object.entries(platformMap)) {
+for (const config of Object.values(platformMap)) {
   const sigPath = path.join(bundleDir, '**', `${config.name}.sig`);
   // Use glob pattern matching (simplified - in production use glob library)
   try {
