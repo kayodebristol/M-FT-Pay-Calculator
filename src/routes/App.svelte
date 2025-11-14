@@ -1,6 +1,13 @@
 <div class="calculator-container">
 	<header class="calculator-header">
 		<h1>Microsoft Pay Calculator</h1>
+		<button class="settings-button" onclick={openSettings} aria-label="Settings">
+			<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<circle cx="10" cy="4" r="1.5" fill="currentColor"/>
+				<circle cx="10" cy="10" r="1.5" fill="currentColor"/>
+				<circle cx="10" cy="16" r="1.5" fill="currentColor"/>
+			</svg>
+		</button>
 	</header>
 
 	<section class="form-section">
@@ -163,5 +170,11 @@
 			minimumFractionDigits: 2,
 			maximumFractionDigits: 2
 		}).format(numValue);
+	}
+
+	// Navigate to settings
+	async function openSettings() {
+		const { goto } = await import('$app/navigation');
+		goto('/settings');
 	}
 </script>

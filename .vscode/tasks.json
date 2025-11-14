@@ -1,0 +1,140 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "dev",
+			"problemMatcher": [],
+			"label": "npm: dev",
+			"detail": "vite dev",
+			"isBackground": true,
+			"runOptions": {
+				"runOn": "default"
+			}
+		},
+		{
+			"label": "GitHub: List Secrets",
+			"type": "shell",
+			"command": "gh secret list",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		},
+		{
+			"label": "GitHub: Setup Secrets (Interactive)",
+			"type": "shell",
+			"command": "pwsh",
+			"args": [
+				"-File",
+				"${workspaceFolder}/scripts/setup-secrets.ps1"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated"
+			},
+			"windows": {
+				"options": {
+					"shell": {
+						"executable": "pwsh.exe",
+						"args": ["-NoProfile", "-ExecutionPolicy", "Bypass"]
+					}
+				}
+			}
+		},
+		{
+			"label": "GitHub: Set Tauri Signing Key",
+			"type": "shell",
+			"command": "pwsh",
+			"args": [
+				"-Command",
+				"$content = [System.IO.File]::ReadAllBytes('${input:tauriKeyPath}'); $base64 = [Convert]::ToBase64String($content); $base64 | gh secret set TAURI_SIGNING_KEY"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always"
+			},
+			"windows": {
+				"options": {
+					"shell": {
+						"executable": "pwsh.exe",
+						"args": ["-NoProfile", "-ExecutionPolicy", "Bypass"]
+					}
+				}
+			}
+		},
+		{
+			"label": "GitHub: Set Windows Certificate",
+			"type": "shell",
+			"command": "pwsh",
+			"args": [
+				"-Command",
+				"$certBytes = [System.IO.File]::ReadAllBytes('${input:certPath}'); $certBase64 = [Convert]::ToBase64String($certBytes); $certBase64 | gh secret set WINDOWS_SIGNING_CERTIFICATE; Write-Host 'Certificate set. Now set the password using: gh secret set WINDOWS_SIGNING_CERTIFICATE_PASSWORD'"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always"
+			},
+			"windows": {
+				"options": {
+					"shell": {
+						"executable": "pwsh.exe",
+						"args": ["-NoProfile", "-ExecutionPolicy", "Bypass"]
+					}
+				}
+			}
+		},
+		{
+			"label": "GitHub: Manage Secrets (Quick)",
+			"type": "shell",
+			"command": "pwsh",
+			"args": [
+				"-File",
+				"${workspaceFolder}/scripts/manage-secrets.ps1",
+				"-Action",
+				"${input:secretAction}"
+			],
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always"
+			},
+			"windows": {
+				"options": {
+					"shell": {
+						"executable": "pwsh.exe",
+						"args": ["-NoProfile", "-ExecutionPolicy", "Bypass"]
+					}
+				}
+			}
+		}
+	],
+	"inputs": [
+		{
+			"id": "tauriKeyPath",
+			"type": "promptString",
+			"description": "Path to Tauri signing key",
+			"default": "~/.tauri/myapp.key"
+		},
+		{
+			"id": "certPath",
+			"type": "promptString",
+			"description": "Path to certificate file (.pfx, .p8, etc.)"
+		},
+		{
+			"id": "secretAction",
+			"type": "pickString",
+			"description": "Secret action",
+			"options": [
+				"list",
+				"set",
+				"delete"
+			],
+			"default": "list"
+		}
+	]
+}
+
+
+

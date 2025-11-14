@@ -1,0 +1,63 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Microsoft Pay Calculator",
+  "version": "0.1.0",
+  "identifier": "com.microsoft.paycalculator",
+  "build": {
+    "frontendDist": "../build",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Microsoft Pay Calculator",
+        "width": 900,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 500,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "msi",
+      "app",
+      "dmg",
+      "deb",
+      "appimage",
+      "rpm"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "copyright": "",
+    "category": "Utility",
+    "shortDescription": "Calculate Microsoft compensation packages",
+    "longDescription": "A calculator application for estimating Microsoft employee compensation including base salary, bonuses, and stock options."
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://gist.githubusercontent.com/YOUR_USERNAME/YOUR_GIST_ID/raw/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "YOUR_PUBLIC_KEY_HERE"
+    }
+  }
+}

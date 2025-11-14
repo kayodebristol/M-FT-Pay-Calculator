@@ -1,0 +1,68 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Launch Chrome",
+			"type": "chrome",
+			"request": "launch",
+			"url": "http://localhost:5173",
+			"webRoot": "${workspaceFolder}/src",
+			"sourceMaps": true,
+			"preLaunchTask": "npm: dev"
+		},
+		{
+			"name": "Launch Edge",
+			"type": "msedge",
+			"request": "launch",
+			"url": "http://localhost:5173",
+			"webRoot": "${workspaceFolder}/src",
+			"sourceMaps": true,
+			"preLaunchTask": "npm: dev"
+		},
+		{
+			"name": "Attach to Chrome",
+			"type": "chrome",
+			"request": "attach",
+			"port": 9222,
+			"webRoot": "${workspaceFolder}/src",
+			"sourceMaps": true
+		},
+		{
+			"name": "Attach to Edge",
+			"type": "msedge",
+			"request": "attach",
+			"port": 9222,
+			"webRoot": "${workspaceFolder}/src",
+			"sourceMaps": true
+		},
+		{
+			"name": "Debug SvelteKit (Node.js)",
+			"type": "node",
+			"request": "launch",
+			"program": "${workspaceFolder}/node_modules/vite/bin/vite.js",
+			"args": ["dev"],
+			"console": "integratedTerminal",
+			"skipFiles": ["<node_internals>/**"],
+			"env": {
+				"NODE_ENV": "development"
+			}
+		}
+	],
+	"compounds": [
+		{
+			"name": "Launch Chrome + Dev Server",
+			"configurations": ["Debug SvelteKit (Node.js)", "Launch Chrome"],
+			"preLaunchTask": "npm: dev",
+			"stopAll": true
+		},
+		{
+			"name": "Launch Edge + Dev Server",
+			"configurations": ["Debug SvelteKit (Node.js)", "Launch Edge"],
+			"preLaunchTask": "npm: dev",
+			"stopAll": true
+		}
+	]
+}
+
+
+
