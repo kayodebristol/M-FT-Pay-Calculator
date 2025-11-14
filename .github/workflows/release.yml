@@ -297,12 +297,16 @@ jobs:
           fi
 
       - name: Sign bundles (if configured)
-        if: matrix.platform == 'windows' && secrets.WINDOWS_SIGNING_CERTIFICATE != ''
+        if: matrix.platform == 'windows'
         env:
           WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
           WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
         shell: pwsh
         run: |
+          if ([string]::IsNullOrEmpty($env:WINDOWS_SIGNING_CERTIFICATE)) {
+            Write-Host "⚠️  WINDOWS_SIGNING_CERTIFICATE not set, skipping signing"
+            exit 0
+          }
           $certPath = "$env:RUNNER_TEMP\cert.pfx"
           [System.IO.File]::WriteAllBytes($certPath, [System.Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE))
           $env:WINDOWS_SIGNING_CERTIFICATE_PATH = $certPath
@@ -312,19 +316,26 @@ jobs:
           }
 
       - name: Sign bundles (macOS)
-        if: matrix.platform == 'macos' && secrets.MACOS_SIGNING_CERTIFICATE != ''
+        if: matrix.platform == 'macos'
         env:
           MACOS_SIGNING_CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
           MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
         run: |
+          if [ -z "$MACOS_SIGNING_CERTIFICATE" ]; then
+            echo "⚠️  MACOS_SIGNING_CERTIFICATE not set, skipping signing"
+            exit 0
+          fi
           # macOS signing would go here
           echo "macOS signing not yet implemented"
 
       - name: Sign update files
-        if: secrets.TAURI_SIGNING_KEY != ''
         env:
           TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
         run: |
+          if [ -z "$TAURI_SIGNING_KEY" ]; then
+            echo "⚠️  TAURI_SIGNING_KEY not set, skipping update file signing"
+            exit 0
+          fi
           # Set up signing key
           mkdir -p ~/.tauri
           echo "$TAURI_SIGNING_KEY" | base64 -d > ~/.tauri/myapp.key
@@ -395,7 +406,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      gists: write
     if: always() && (needs.prepare-release.result == 'success')
     
     steps:
@@ -444,9 +454,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create or update Gist with manifest
+        continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use PAT if available (needed for Gist access), fallback to GITHUB_TOKEN
+          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Use PAT if available, otherwise use GITHUB_TOKEN (but it won't work for Gists)
+          if [ -z "$GH_TOKEN" ]; then
+            GH_TOKEN="$GITHUB_TOKEN"
+          fi
+          
+          # GITHUB_TOKEN doesn't have gist permissions, so skip if no PAT
+          if [ -z "${{ secrets.GITHUB_PAT }}" ]; then
+            echo "⚠️  GITHUB_PAT secret not found. Skipping Gist update."
+            echo "📋 Manifest is available at: https://github.com/${{ github.repository }}/releases/download/${{ needs.prepare-release.outputs.tag }}/latest.json"
+            echo ""
+            echo "💡 To enable Gist updates, create a GitHub Personal Access Token with 'gist' scope"
+            echo "   and add it as a repository secret named 'GITHUB_PAT'"
+            exit 0
+          fi
+          
           if [ -n "${{ secrets.UPDATE_MANIFEST_GIST_ID }}" ]; then
             echo "Updating existing Gist: ${{ secrets.UPDATE_MANIFEST_GIST_ID }}"
             gh gist edit ${{ secrets.UPDATE_MANIFEST_GIST_ID }} latest.json --filename latest.json || {
