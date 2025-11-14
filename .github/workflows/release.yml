@@ -31,6 +31,7 @@ jobs:
       tag: ${{ steps.bump.outputs.tag }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       release_id: ${{ steps.create_release.outputs.id }}
+      release_url: ${{ steps.create_release.outputs.url }}
     
     steps:
       - name: Checkout repository
@@ -38,6 +39,8 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Always checkout main branch for releases
+          ref: main
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -48,6 +51,19 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+      - name: Verify we're on main branch
+        run: |
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "Current branch: $CURRENT_BRANCH"
+          if [ "$CURRENT_BRANCH" != "main" ] && [ "$CURRENT_BRANCH" != "master" ]; then
+            echo "⚠️  Not on main/master, checking out main..."
+            git checkout main || git checkout master || {
+              echo "❌ Failed to checkout main/master branch"
+              exit 1
+            }
+          fi
+          echo "✅ On branch: $(git rev-parse --abbrev-ref HEAD)"
 
       - name: Bump version
         id: bump
@@ -56,8 +72,18 @@ jobs:
           CURRENT_VERSION=$(node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); console.log(config.version);")
           echo "Current version: $CURRENT_VERSION"
           
-          # Bump version
-          NEW_VERSION=$(node scripts/bump-version.js ${{ github.event.inputs.version_bump }} 2>&1 | grep "New version:" | awk '{print $3}')
+          # Bump version (capture output properly)
+          node scripts/bump-version.js ${{ github.event.inputs.version_bump }} > bump_output.txt 2>&1
+          cat bump_output.txt
+          
+          # Extract new version from output
+          NEW_VERSION=$(grep "New version:" bump_output.txt | awk '{print $3}')
+          if [ -z "$NEW_VERSION" ]; then
+            echo "❌ Failed to extract new version from bump script output"
+            cat bump_output.txt
+            exit 1
+          fi
+          
           echo "New version: $NEW_VERSION"
           
           # Set outputs
@@ -92,44 +118,96 @@ jobs:
           NOTES="# Release ${{ steps.bump.outputs.tag }}\n\n$NOTES"
           
           # Save to file for later use
-          echo "$NOTES" > release_notes.md
+          echo -e "$NOTES" > release_notes.md
           
           # Output for GitHub release
           {
             echo 'notes<<EOF'
-            echo "$NOTES"
+            echo -e "$NOTES"
             echo 'EOF'
           } >> $GITHUB_OUTPUT
           
           echo "Release notes prepared"
+          cat release_notes.md
 
-      - name: Commit version bump
+      - name: Update CHANGELOG
         run: |
-          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+          node scripts/update-changelog.js ${{ steps.bump.outputs.version }} release_notes.md
+          cat CHANGELOG.md | head -30
+
+      - name: Commit version bump and changelog
+        id: commit
+        run: |
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml CHANGELOG.md
           git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
-          git push origin HEAD:${{ github.ref_name }}
+          
+          # Get the commit SHA
+          COMMIT_SHA=$(git rev-parse HEAD)
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "Commit SHA: $COMMIT_SHA"
+          
+          # Get current branch name
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "Current branch: $CURRENT_BRANCH"
+          
+          # Push to current branch (should be main)
+          git push origin HEAD:$CURRENT_BRANCH || {
+            echo "❌ Failed to push to $CURRENT_BRANCH"
+            exit 1
+          }
+          
+          echo "✅ Pushed version bump commit to $CURRENT_BRANCH"
 
-      - name: Create tag
+      - name: Create and push tag
         run: |
+          # Create tag pointing to the commit we just pushed
           git tag -a "${{ steps.bump.outputs.tag }}" -m "Release ${{ steps.bump.outputs.tag }}"
-          git push origin "${{ steps.bump.outputs.tag }}"
+          
+          # Push tag
+          git push origin "${{ steps.bump.outputs.tag }}" || {
+            echo "⚠️  Failed to push tag, retrying..."
+            sleep 2
+            git push origin "${{ steps.bump.outputs.tag }}"
+          }
+          
+          echo "✅ Tag ${{ steps.bump.outputs.tag }} created and pushed"
+
+      - name: Wait for tag to be available
+        run: |
+          # Wait a moment for tag to propagate
+          sleep 5
+          # Verify tag exists
+          git fetch --tags
+          if git rev-parse "${{ steps.bump.outputs.tag }}" >/dev/null 2>&1; then
+            echo "✅ Tag ${{ steps.bump.outputs.tag }} exists"
+          else
+            echo "⚠️  Tag not found locally, fetching..."
+            git fetch origin tag "${{ steps.bump.outputs.tag }}" || {
+              echo "❌ Tag ${{ steps.bump.outputs.tag }} not found after fetch"
+              exit 1
+            }
+          fi
 
       - name: Create GitHub Release
         id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.bump.outputs.tag }}
-          release_name: Release ${{ steps.bump.outputs.tag }}
+          name: Release ${{ steps.bump.outputs.tag }}
           body_path: release_notes.md
           draft: false
           prerelease: false
+          generate_release_notes: false
+          files: |
+            CHANGELOG.md
 
   build-and-release:
-    name: Build and Release
+    name: Build and Release (${{ matrix.platform }})
     needs: prepare-release
     runs-on: ${{ matrix.os }}
+    if: needs.prepare-release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -150,6 +228,34 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Checkout the tag that was just created
+          ref: ${{ needs.prepare-release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Verify tag and version
+        run: |
+          echo "Tag: ${{ needs.prepare-release.outputs.tag }}"
+          echo "Version: ${{ needs.prepare-release.outputs.version }}"
+          
+          # Verify version in files
+          TAURI_VERSION=$(node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); console.log(config.version);")
+          PKG_VERSION=$(node -e "const fs=require('fs'); const pkg=JSON.parse(fs.readFileSync('package.json')); console.log(pkg.version);")
+          
+          echo "Tauri version: $TAURI_VERSION"
+          echo "Package version: $PKG_VERSION"
+          
+          if [ "$TAURI_VERSION" != "${{ needs.prepare-release.outputs.version }}" ]; then
+            echo "❌ Version mismatch in tauri.conf.json"
+            exit 1
+          fi
+          
+          if [ "$PKG_VERSION" != "${{ needs.prepare-release.outputs.version }}" ]; then
+            echo "❌ Version mismatch in package.json"
+            exit 1
+          fi
+          
+          echo "✅ Version verified"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -227,32 +333,59 @@ jobs:
           # Sign bundles
           bash scripts/sign-update-files.sh || echo "Signing failed, continuing..."
 
-      - name: Find and upload release assets
+      - name: Find release assets
+        id: find_assets
         shell: bash
         run: |
+          ASSETS=()
+          
           # Find assets based on platform
           if [ "${{ matrix.platform }}" == "windows" ]; then
-            find src-tauri/target -name "*.msi" -o -name "*.msi.sig" | while IFS= read -r asset; do
+            while IFS= read -r asset; do
               if [ -f "$asset" ]; then
-                echo "Uploading: $asset"
-                gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} || echo "Failed to upload $asset"
+                ASSETS+=("$asset")
+                echo "Found: $asset"
               fi
-            done
+            done < <(find src-tauri/target -name "*.msi" -o -name "*.msi.sig" 2>/dev/null)
           elif [ "${{ matrix.platform }}" == "macos" ]; then
-            find src-tauri/target \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.dmg.sig" -o -name "*.app.tar.gz.sig" \) | while IFS= read -r asset; do
+            while IFS= read -r asset; do
               if [ -f "$asset" ]; then
-                echo "Uploading: $asset"
-                gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} || echo "Failed to upload $asset"
+                ASSETS+=("$asset")
+                echo "Found: $asset"
               fi
-            done
+            done < <(find src-tauri/target \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.dmg.sig" -o -name "*.app.tar.gz.sig" \) 2>/dev/null)
           else
-            find src-tauri/target \( -name "*.deb" -o -name "*.AppImage.tar.gz" -o -name "*.rpm" -o -name "*.deb.sig" -o -name "*.AppImage.tar.gz.sig" -o -name "*.rpm.sig" \) | while IFS= read -r asset; do
+            while IFS= read -r asset; do
               if [ -f "$asset" ]; then
-                echo "Uploading: $asset"
-                gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} || echo "Failed to upload $asset"
+                ASSETS+=("$asset")
+                echo "Found: $asset"
               fi
-            done
+            done < <(find src-tauri/target \( -name "*.deb" -o -name "*.AppImage.tar.gz" -o -name "*.rpm" -o -name "*.deb.sig" -o -name "*.AppImage.tar.gz.sig" -o -name "*.rpm.sig" \) 2>/dev/null)
           fi
+          
+          if [ ${#ASSETS[@]} -eq 0 ]; then
+            echo "⚠️  No assets found for ${{ matrix.platform }}"
+            echo "assets=" >> $GITHUB_OUTPUT
+          else
+            echo "Found ${#ASSETS[@]} asset(s)"
+            printf 'assets=%s\n' "${ASSETS[*]}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload release assets
+        if: steps.find_assets.outputs.assets != ''
+        shell: bash
+        run: |
+          ASSETS="${{ steps.find_assets.outputs.assets }}"
+          for asset in $ASSETS; do
+            if [ -f "$asset" ]; then
+              echo "Uploading: $asset"
+              gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} || {
+                echo "⚠️  Failed to upload $asset, retrying..."
+                sleep 2
+                gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} || echo "❌ Failed to upload $asset after retry"
+              }
+            fi
+          done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -263,10 +396,15 @@ jobs:
     permissions:
       contents: read
       gists: write
+    if: always() && (needs.prepare-release.result == 'success')
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Checkout the tag to ensure we have the correct version
+          ref: ${{ needs.prepare-release.outputs.tag }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -301,7 +439,7 @@ jobs:
 
       - name: Upload manifest to release
         run: |
-          gh release upload "${{ needs.prepare-release.outputs.tag }}" latest.json --repo ${{ github.repository }}
+          gh release upload "${{ needs.prepare-release.outputs.tag }}" latest.json --repo ${{ github.repository }} --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -311,7 +449,15 @@ jobs:
         run: |
           if [ -n "${{ secrets.UPDATE_MANIFEST_GIST_ID }}" ]; then
             echo "Updating existing Gist: ${{ secrets.UPDATE_MANIFEST_GIST_ID }}"
-            gh gist edit ${{ secrets.UPDATE_MANIFEST_GIST_ID }} latest.json --filename latest.json
+            gh gist edit ${{ secrets.UPDATE_MANIFEST_GIST_ID }} latest.json --filename latest.json || {
+              echo "⚠️  Failed to update Gist, creating new one..."
+              GIST_OUTPUT=$(gh gist create latest.json --filename latest.json --public)
+              GIST_ID=$(echo "$GIST_OUTPUT" | grep -oP 'gist.github.com/[^/]+/\K[^/]+' || echo "")
+              if [ -n "$GIST_ID" ]; then
+                echo "✅ Created new Gist: $GIST_ID"
+                echo "⚠️  Update secret UPDATE_MANIFEST_GIST_ID to: $GIST_ID"
+              fi
+            }
             echo "✅ Updated Gist"
             echo "📋 Manifest URL: https://gist.githubusercontent.com/${{ github.repository_owner }}/${{ secrets.UPDATE_MANIFEST_GIST_ID }}/raw/latest.json"
           else
@@ -325,5 +471,8 @@ jobs:
               echo "⚠️  IMPORTANT: Add this to your repository secrets:"
               echo "   Secret name: UPDATE_MANIFEST_GIST_ID"
               echo "   Secret value: $GIST_ID"
+            else
+              echo "❌ Failed to extract Gist ID from output:"
+              echo "$GIST_OUTPUT"
             fi
           fi
