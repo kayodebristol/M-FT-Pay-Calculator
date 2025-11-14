@@ -28,7 +28,7 @@ async function initStore() {
 
 // Create writable store
 function createSettingsStore() {
-	const { subscribe, set: setStore, update } = writable(DEFAULT_SETTINGS);
+	const { subscribe, set: setStore } = writable(DEFAULT_SETTINGS);
 
 	// Load settings from Tauri store on initialization
 	async function load() {
