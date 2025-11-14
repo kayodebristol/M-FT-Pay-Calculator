@@ -6,6 +6,8 @@
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	<link rel="alternate icon" href="/favicon.svg" />
 </svelte:head>
 
 {@render children?.()}

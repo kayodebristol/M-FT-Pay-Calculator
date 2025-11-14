@@ -20,4 +20,21 @@ export default defineConfig({
 				}
 			: undefined,
 	},
+	optimizeDeps: {
+		// Exclude Tauri APIs from dependency pre-bundling
+		exclude: ['@tauri-apps/api', '@tauri-apps/plugin-updater', '@tauri-apps/plugin-store'],
+	},
+	build: {
+		rollupOptions: {
+			external: (id) => {
+				// Externalize Tauri APIs - they're provided by the Tauri runtime at runtime
+				// This prevents Rollup from trying to resolve them during build
+				return id.startsWith('@tauri-apps/api/') || id.startsWith('@tauri-apps/plugin-');
+			},
+		},
+	},
+	ssr: {
+		// Don't try to resolve Tauri APIs during SSR
+		noExternal: [],
+	},
 });

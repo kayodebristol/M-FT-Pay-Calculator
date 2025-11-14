@@ -1,12 +1,10 @@
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
 	import { onMount } from 'svelte';
-	import { check, onUpdaterEvent } from '@tauri-apps/plugin-updater';
-	import { getCurrent } from '@tauri-apps/api/window';
 
 	let autoUpdate = $state(false);
 	let updateAvailable = $state(false);
-	let updateInfo: any = null;
+	let updateInfo = $state<any>(null);
 	let checkingUpdate = $state(false);
 	let appVersion = $state('');
 
@@ -16,30 +14,18 @@
 			autoUpdate = s.autoUpdate;
 		})();
 
-		// Get app version
-		try {
-			const { getVersion } = await import('@tauri-apps/api/app');
-			appVersion = await getVersion();
-		} catch (error) {
-			console.error('Failed to get app version:', error);
-		}
-
-		// Set up updater event listener
-		onUpdaterEvent(({ event, data }) => {
-			if (event === 'CHECKING_FOR_UPDATE') {
-				checkingUpdate = true;
-			} else if (event === 'UPDATE_AVAILABLE') {
-				updateAvailable = true;
-				updateInfo = data;
-				checkingUpdate = false;
-			} else if (event === 'UPDATE_NOT_AVAILABLE') {
-				updateAvailable = false;
-				checkingUpdate = false;
-			} else if (event === 'UPDATE_ERROR') {
-				console.error('Update error:', data);
-				checkingUpdate = false;
+		// Get app version (only in Tauri)
+		if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+			try {
+				const appModule = await import('@tauri-apps/api/app');
+				appVersion = await appModule.getVersion();
+			} catch (error) {
+				console.error('Failed to get app version:', error);
 			}
-		});
+		} else {
+			// Fallback for browser/dev mode
+			appVersion = '0.1.0 (dev)';
+		}
 
 		// Check for updates on mount if auto-update is enabled
 		if (autoUpdate) {
@@ -61,8 +47,16 @@
 	}
 
 	async function checkForUpdate() {
+		// Only check for updates in Tauri environment
+		if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+			console.warn('Update check only available in Tauri app');
+			checkingUpdate = false;
+			return;
+		}
+
 		try {
 			checkingUpdate = true;
+			const { check } = await import('@tauri-apps/plugin-updater');
 			const updater = await check();
 			if (updater) {
 				updateAvailable = true;
@@ -81,13 +75,29 @@
 	}
 
 	async function installUpdate() {
+		// Only install updates in Tauri environment
+		if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+			console.warn('Update installation only available in Tauri app');
+			return;
+		}
+
 		try {
+			const { check } = await import('@tauri-apps/plugin-updater');
 			const updater = await check();
 			if (updater) {
 				await updater.downloadAndInstall();
 				// Restart app after installation
-				const { relaunch } = await import('@tauri-apps/api/process');
-				await relaunch();
+				// Use dynamic import with variable to prevent Vite from analyzing it
+				try {
+					// Use variable to make import truly dynamic (prevents Vite analysis)
+					const processPath = '@tauri-apps/api/process';
+					const processModule = await import(processPath);
+					await processModule.relaunch();
+				} catch (importError) {
+					// Fallback if process API is not available
+					console.warn('Could not relaunch app automatically. Please restart manually.');
+					console.error('Import error:', importError);
+				}
 			}
 		} catch (error) {
 			console.error('Failed to install update:', error);
@@ -123,7 +133,7 @@
 
 		<div class="setting-item">
 			<div class="setting-info">
-				<label class="setting-label">Version</label>
+				<div class="setting-label">Version</div>
 				<p class="setting-description">Current application version</p>
 			</div>
 			<div class="setting-value">{appVersion}</div>
@@ -131,7 +141,7 @@
 
 		<div class="setting-item">
 			<div class="setting-info">
-				<label class="setting-label">Check for Updates</label>
+				<div class="setting-label">Check for Updates</div>
 				<p class="setting-description">Manually check for available updates</p>
 			</div>
 			<button

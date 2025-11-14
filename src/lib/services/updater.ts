@@ -1,10 +1,20 @@
-import { check, onUpdaterEvent } from '@tauri-apps/plugin-updater';
 import { settings } from '$lib/stores/settings';
 
 let checkInterval: number | null = null;
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // Check every hour
 
+// Check if we're in Tauri environment
+function isTauri(): boolean {
+	return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
 export async function initializeAutoUpdate() {
+	// Only initialize in Tauri environment
+	if (!isTauri()) {
+		console.log('Auto-update: Not in Tauri environment, skipping initialization');
+		return () => {}; // Return no-op unsubscribe
+	}
+
 	// Load settings
 	let autoUpdateEnabled = true;
 	const unsubscribe = settings.subscribe((s) => {
@@ -13,16 +23,6 @@ export async function initializeAutoUpdate() {
 			startAutoUpdate();
 		} else {
 			stopAutoUpdate();
-		}
-	});
-
-	// Set up updater event listener
-	await onUpdaterEvent(({ event, data }) => {
-		if (event === 'UPDATE_AVAILABLE') {
-			console.log('Update available:', data);
-			// The updater dialog will be shown automatically if configured
-		} else if (event === 'UPDATE_ERROR') {
-			console.error('Update error:', data);
 		}
 	});
 
@@ -36,7 +36,12 @@ export async function initializeAutoUpdate() {
 }
 
 async function checkForUpdate() {
+	if (!isTauri()) {
+		return;
+	}
+
 	try {
+		const { check } = await import('@tauri-apps/plugin-updater');
 		const updater = await check();
 		if (updater) {
 			console.log('Update available:', updater.version);

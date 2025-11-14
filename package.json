@@ -25,6 +25,8 @@
     "tauri:bundle:macos": "tauri bundle --bundles app,dmg",
     "tauri:bundle:linux": "tauri bundle --bundles deb,appimage,rpm",
     "tauri:build:no-bundle": "tauri build --no-bundle",
+    "clean": "node -e \"const fs=require('fs');['node_modules/.vite','.svelte-kit','build'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\"",
+    "clean:vite": "node -e \"const fs=require('fs');try{fs.rmSync('node_modules/.vite',{recursive:true,force:true})}catch(e){}\"",
     "adp:analyze": "tsx node_modules/@architectural-discipline/monorepo/packages/cli/src/cli.ts analyze",
     "adp:recommend": "tsx node_modules/@architectural-discipline/monorepo/packages/cli/src/cli.ts recommend",
     "adp:check": "tsx node_modules/@architectural-discipline/monorepo/packages/cli/src/cli.ts analyze --format json"
