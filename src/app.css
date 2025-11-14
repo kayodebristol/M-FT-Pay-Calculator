@@ -54,6 +54,7 @@ body {
 
 /* Header */
 .calculator-header {
+	position: relative;
 	text-align: center;
 	margin-bottom: var(--spacing-2xl);
 	padding-bottom: var(--spacing-lg);
@@ -66,6 +67,35 @@ body {
 	color: var(--primary-color);
 	margin-bottom: var(--spacing-xs);
 	letter-spacing: -0.5px;
+}
+
+.settings-button {
+	position: absolute;
+	top: 0;
+	right: 0;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	padding: var(--spacing-sm);
+	color: var(--text-secondary);
+	border-radius: var(--border-radius);
+	transition: all 0.2s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.settings-button:hover {
+	background-color: var(--primary-light);
+	color: var(--primary-color);
+}
+
+.settings-button:active {
+	transform: scale(0.95);
+}
+
+.settings-button svg {
+	display: block;
 }
 
 /* Form Section */

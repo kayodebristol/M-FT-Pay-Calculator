@@ -9,6 +9,8 @@ A cross-platform pay calculator application built with Svelte 5 and Tauri 2, sup
 - Modern, responsive UI built with Svelte 5
 - Cross-platform: Desktop (Windows 7+, macOS 10.15+, Linux), Android 8+, and iOS 9+
 - Built with Tauri 2 for native performance
+- **Auto-update**: Automatically check for and install updates (enabled by default)
+- **Settings Page**: Configure auto-update preferences and app settings
 
 ## 📱 Build & Deploy iOS Apps Without a Mac!
 

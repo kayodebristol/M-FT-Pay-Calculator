@@ -46,6 +46,8 @@
     "vite": "^7.0.4"
   },
   "dependencies": {
-    "@architectural-discipline/monorepo": "github:plures/adp"
+    "@architectural-discipline/monorepo": "github:plures/adp",
+    "@tauri-apps/plugin-store": "^2.4.1",
+    "@tauri-apps/plugin-updater": "^2.9.0"
   }
 }

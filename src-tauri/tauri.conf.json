@@ -50,5 +50,14 @@
     "shortDescription": "Calculate Microsoft compensation packages",
     "longDescription": "A calculator application for estimating Microsoft employee compensation including base salary, bonuses, and stock options."
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://gist.githubusercontent.com/YOUR_USERNAME/YOUR_GIST_ID/raw/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "YOUR_PUBLIC_KEY_HERE"
+    }
+  }
 }
