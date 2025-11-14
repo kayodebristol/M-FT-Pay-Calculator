@@ -40,9 +40,9 @@ jobs:
     outputs:
       version: ${{ steps.bump.outputs.version }}
       tag: ${{ steps.bump.outputs.tag }}
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      release_id: ${{ steps.create_release.outputs.id }}
-      release_url: ${{ steps.create_release.outputs.url }}
+      upload_url: ${{ steps.release_outputs.outputs.upload_url }}
+      release_id: ${{ steps.release_outputs.outputs.id }}
+      release_url: ${{ steps.release_outputs.outputs.url }}
     
     steps:
       - name: Checkout repository
@@ -76,84 +76,62 @@ jobs:
           fi
           echo "✅ On branch: $(git rev-parse --abbrev-ref HEAD)"
 
-      - name: Determine trigger type and version
-        id: trigger_info
+      - name: Determine version and bump if needed
+        id: bump
         run: |
           # Check if triggered by tag push
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
             # Tag push - extract version from tag
             TAG_NAME="${{ github.ref_name }}"
             VERSION=${TAG_NAME#v}  # Remove 'v' prefix if present
-            echo "trigger_type=tag" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
             echo "should_bump=false" >> $GITHUB_OUTPUT
             echo "✅ Triggered by tag push: $TAG_NAME (version: $VERSION)"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            # Manual dispatch - use provided version bump
-            echo "trigger_type=manual" >> $GITHUB_OUTPUT
-            echo "version_bump=${{ github.event.inputs.version_bump }}" >> $GITHUB_OUTPUT
-            echo "should_bump=true" >> $GITHUB_OUTPUT
-            echo "✅ Triggered manually with bump: ${{ github.event.inputs.version_bump }}"
           else
-            # Push to main - default to patch bump
-            echo "trigger_type=push" >> $GITHUB_OUTPUT
-            echo "version_bump=patch" >> $GITHUB_OUTPUT
-            echo "should_bump=true" >> $GITHUB_OUTPUT
-            echo "✅ Triggered by push to main (default: patch bump)"
-          fi
-
-      - name: Bump version (if needed)
-        id: bump
-        if: steps.trigger_info.outputs.should_bump == 'true'
-        run: |
-          # Get current version
-          CURRENT_VERSION=$(node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); console.log(config.version);")
-          echo "Current version: $CURRENT_VERSION"
-          
-          # Determine bump type
-          if [[ "${{ steps.trigger_info.outputs.trigger_type }}" == "manual" ]]; then
-            BUMP_TYPE="${{ steps.trigger_info.outputs.version_bump }}"
-          else
-            BUMP_TYPE="patch"
-          fi
-          
-          echo "Bumping version: $BUMP_TYPE"
-          
-          # Bump version (capture output properly)
-          node scripts/bump-version.js $BUMP_TYPE > bump_output.txt 2>&1
-          cat bump_output.txt
-          
-          # Extract new version from output
-          NEW_VERSION=$(grep "New version:" bump_output.txt | awk '{print $3}')
-          if [ -z "$NEW_VERSION" ]; then
-            echo "❌ Failed to extract new version from bump script output"
+            # Need to bump version - determine bump type
+            if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+              BUMP_TYPE="${{ github.event.inputs.version_bump }}"
+              echo "✅ Triggered manually with bump: $BUMP_TYPE"
+            else
+              BUMP_TYPE="patch"
+              echo "✅ Triggered by push to main (default: patch bump)"
+            fi
+            
+            # Get current version
+            CURRENT_VERSION=$(node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); console.log(config.version);")
+            echo "Current version: $CURRENT_VERSION"
+            
+            echo "Bumping version: $BUMP_TYPE"
+            
+            # Bump version (capture output properly)
+            node scripts/bump-version.js $BUMP_TYPE > bump_output.txt 2>&1
             cat bump_output.txt
-            exit 1
+            
+            # Extract new version from output
+            NEW_VERSION=$(grep "New version:" bump_output.txt | awk '{print $3}')
+            if [ -z "$NEW_VERSION" ]; then
+              echo "❌ Failed to extract new version from bump script output"
+              cat bump_output.txt
+              exit 1
+            fi
+            
+            echo "New version: $NEW_VERSION"
+            
+            # Set outputs
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "should_bump=true" >> $GITHUB_OUTPUT
+            
+            # Verify version was updated
+            VERIFIED_VERSION=$(node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); console.log(config.version);")
+            if [ "$VERIFIED_VERSION" != "$NEW_VERSION" ]; then
+              echo "❌ Version mismatch! Expected $NEW_VERSION but got $VERIFIED_VERSION"
+              exit 1
+            fi
+            
+            echo "✅ Version bumped to $NEW_VERSION"
           fi
-          
-          echo "New version: $NEW_VERSION"
-          
-          # Set outputs
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
-          
-          # Verify version was updated
-          VERIFIED_VERSION=$(node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); console.log(config.version);")
-          if [ "$VERIFIED_VERSION" != "$NEW_VERSION" ]; then
-            echo "❌ Version mismatch! Expected $NEW_VERSION but got $VERIFIED_VERSION"
-            exit 1
-          fi
-          
-          echo "✅ Version bumped to $NEW_VERSION"
-
-      - name: Use existing version (tag push)
-        id: bump
-        if: steps.trigger_info.outputs.should_bump == 'false'
-        run: |
-          echo "version=${{ steps.trigger_info.outputs.version }}" >> $GITHUB_OUTPUT
-          echo "tag=${{ steps.trigger_info.outputs.tag }}" >> $GITHUB_OUTPUT
-          echo "✅ Using existing tag version: ${{ steps.trigger_info.outputs.version }}"
 
       - name: Create release notes
         id: release_notes
@@ -187,14 +165,14 @@ jobs:
           cat release_notes.md
 
       - name: Update CHANGELOG
-        if: steps.trigger_info.outputs.should_bump == 'true'
+        if: steps.bump.outputs.should_bump == 'true'
         run: |
           node scripts/update-changelog.js ${{ steps.bump.outputs.version }} release_notes.md
           cat CHANGELOG.md | head -30
 
       - name: Commit version bump and changelog
         id: commit
-        if: steps.trigger_info.outputs.should_bump == 'true'
+        if: steps.bump.outputs.should_bump == 'true'
         run: |
           git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml CHANGELOG.md
           git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
@@ -217,7 +195,7 @@ jobs:
           echo "✅ Pushed version bump commit to $CURRENT_BRANCH"
 
       - name: Create and push tag
-        if: steps.trigger_info.outputs.should_bump == 'true'
+        if: steps.bump.outputs.should_bump == 'true'
         run: |
           # Create tag pointing to the commit we just pushed
           git tag -a "${{ steps.bump.outputs.tag }}" -m "Release ${{ steps.bump.outputs.tag }}"
@@ -234,7 +212,7 @@ jobs:
       - name: Wait for tag to be available
         run: |
           # For tag pushes, tag already exists
-          if [[ "${{ steps.trigger_info.outputs.should_bump }}" == "false" ]]; then
+          if [[ "${{ steps.bump.outputs.should_bump }}" == "false" ]]; then
             echo "✅ Tag already exists (triggered by tag push)"
             exit 0
           fi
@@ -253,8 +231,23 @@ jobs:
             }
           fi
 
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if gh release view "${{ steps.bump.outputs.tag }}" --repo ${{ github.repository }} 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Release ${{ steps.bump.outputs.tag }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  Release ${{ steps.bump.outputs.tag }} does not exist yet"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
       - name: Create GitHub Release
         id: create_release
+        if: steps.check_release.outputs.exists != 'true'
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -267,7 +260,32 @@ jobs:
           generate_release_notes: false
           files: |
             CHANGELOG.md
-          skip_if_exists: true
+
+      - name: Get existing release info
+        id: get_release
+        if: steps.check_release.outputs.exists == 'true'
+        run: |
+          RELEASE_ID=$(gh release view "${{ steps.bump.outputs.tag }}" --repo ${{ github.repository }} --json id -q .id)
+          RELEASE_URL=$(gh release view "${{ steps.bump.outputs.tag }}" --repo ${{ github.repository }} --json url -q .url)
+          UPLOAD_URL=$(gh api repos/${{ github.repository }}/releases/$RELEASE_ID --jq .upload_url | sed 's/{.*}//')
+          echo "id=$RELEASE_ID" >> $GITHUB_OUTPUT
+          echo "url=$RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "upload_url=$UPLOAD_URL" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set release outputs
+        id: release_outputs
+        run: |
+          if [[ "${{ steps.check_release.outputs.exists }}" == "true" ]]; then
+            echo "id=${{ steps.get_release.outputs.id }}" >> $GITHUB_OUTPUT
+            echo "url=${{ steps.get_release.outputs.url }}" >> $GITHUB_OUTPUT
+            echo "upload_url=${{ steps.get_release.outputs.upload_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "id=${{ steps.create_release.outputs.id }}" >> $GITHUB_OUTPUT
+            echo "url=${{ steps.create_release.outputs.url }}" >> $GITHUB_OUTPUT
+            echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> $GITHUB_OUTPUT
+          fi
 
   build-and-release:
     name: Build and Release (${{ matrix.platform }})
