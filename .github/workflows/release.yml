@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  # Manual trigger with version bump
   workflow_dispatch:
     inputs:
       version_bump:
@@ -17,6 +18,16 @@ on:
         required: false
         type: string
         default: ''
+  # Automatic triggers
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+      - 'docs/**'
 
 jobs:
   prepare-release:
@@ -65,15 +76,52 @@ jobs:
           fi
           echo "✅ On branch: $(git rev-parse --abbrev-ref HEAD)"
 
-      - name: Bump version
+      - name: Determine trigger type and version
+        id: trigger_info
+        run: |
+          # Check if triggered by tag push
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/* ]]; then
+            # Tag push - extract version from tag
+            TAG_NAME="${{ github.ref_name }}"
+            VERSION=${TAG_NAME#v}  # Remove 'v' prefix if present
+            echo "trigger_type=tag" >> $GITHUB_OUTPUT
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "tag=$TAG_NAME" >> $GITHUB_OUTPUT
+            echo "should_bump=false" >> $GITHUB_OUTPUT
+            echo "✅ Triggered by tag push: $TAG_NAME (version: $VERSION)"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Manual dispatch - use provided version bump
+            echo "trigger_type=manual" >> $GITHUB_OUTPUT
+            echo "version_bump=${{ github.event.inputs.version_bump }}" >> $GITHUB_OUTPUT
+            echo "should_bump=true" >> $GITHUB_OUTPUT
+            echo "✅ Triggered manually with bump: ${{ github.event.inputs.version_bump }}"
+          else
+            # Push to main - default to patch bump
+            echo "trigger_type=push" >> $GITHUB_OUTPUT
+            echo "version_bump=patch" >> $GITHUB_OUTPUT
+            echo "should_bump=true" >> $GITHUB_OUTPUT
+            echo "✅ Triggered by push to main (default: patch bump)"
+          fi
+
+      - name: Bump version (if needed)
         id: bump
+        if: steps.trigger_info.outputs.should_bump == 'true'
         run: |
           # Get current version
           CURRENT_VERSION=$(node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json')); console.log(config.version);")
           echo "Current version: $CURRENT_VERSION"
           
+          # Determine bump type
+          if [[ "${{ steps.trigger_info.outputs.trigger_type }}" == "manual" ]]; then
+            BUMP_TYPE="${{ steps.trigger_info.outputs.version_bump }}"
+          else
+            BUMP_TYPE="patch"
+          fi
+          
+          echo "Bumping version: $BUMP_TYPE"
+          
           # Bump version (capture output properly)
-          node scripts/bump-version.js ${{ github.event.inputs.version_bump }} > bump_output.txt 2>&1
+          node scripts/bump-version.js $BUMP_TYPE > bump_output.txt 2>&1
           cat bump_output.txt
           
           # Extract new version from output
@@ -98,6 +146,14 @@ jobs:
           fi
           
           echo "✅ Version bumped to $NEW_VERSION"
+
+      - name: Use existing version (tag push)
+        id: bump
+        if: steps.trigger_info.outputs.should_bump == 'false'
+        run: |
+          echo "version=${{ steps.trigger_info.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "tag=${{ steps.trigger_info.outputs.tag }}" >> $GITHUB_OUTPUT
+          echo "✅ Using existing tag version: ${{ steps.trigger_info.outputs.version }}"
 
       - name: Create release notes
         id: release_notes
@@ -131,12 +187,14 @@ jobs:
           cat release_notes.md
 
       - name: Update CHANGELOG
+        if: steps.trigger_info.outputs.should_bump == 'true'
         run: |
           node scripts/update-changelog.js ${{ steps.bump.outputs.version }} release_notes.md
           cat CHANGELOG.md | head -30
 
       - name: Commit version bump and changelog
         id: commit
+        if: steps.trigger_info.outputs.should_bump == 'true'
         run: |
           git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml CHANGELOG.md
           git commit -m "chore: bump version to ${{ steps.bump.outputs.version }}"
@@ -159,6 +217,7 @@ jobs:
           echo "✅ Pushed version bump commit to $CURRENT_BRANCH"
 
       - name: Create and push tag
+        if: steps.trigger_info.outputs.should_bump == 'true'
         run: |
           # Create tag pointing to the commit we just pushed
           git tag -a "${{ steps.bump.outputs.tag }}" -m "Release ${{ steps.bump.outputs.tag }}"
@@ -174,6 +233,12 @@ jobs:
 
       - name: Wait for tag to be available
         run: |
+          # For tag pushes, tag already exists
+          if [[ "${{ steps.trigger_info.outputs.should_bump }}" == "false" ]]; then
+            echo "✅ Tag already exists (triggered by tag push)"
+            exit 0
+          fi
+          
           # Wait a moment for tag to propagate
           sleep 5
           # Verify tag exists
@@ -202,6 +267,7 @@ jobs:
           generate_release_notes: false
           files: |
             CHANGELOG.md
+          skip_if_exists: true
 
   build-and-release:
     name: Build and Release (${{ matrix.platform }})
