@@ -141,10 +141,7 @@ jobs:
       - name: Upload to TestFlight
         if: |
           github.event.inputs.build_type == 'release' && 
-          (github.event.inputs.deploy_testflight == 'true' || github.event_name == 'push') &&
-          secrets.APPSTORE_API_KEY_ID != '' &&
-          secrets.APPSTORE_ISSUER_ID != '' &&
-          secrets.APPSTORE_API_PRIVATE_KEY != ''
+          (github.event.inputs.deploy_testflight == 'true' || github.event_name == 'push')
         uses: apple-actions/upload-testflight-build@v1
         with:
           app-path: ${{ steps.find_ipa.outputs.ipa_path }}
@@ -153,4 +150,5 @@ jobs:
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           skip-waiting-for-build-processing: false
           skip-submission: true
+        continue-on-error: true
 
