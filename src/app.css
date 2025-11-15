@@ -5,6 +5,7 @@
 	box-sizing: border-box;
 }
 
+/* Auto-release trigger */
 :root {
 	--primary-color: #0078d4;
 	--primary-dark: #005a9e;
