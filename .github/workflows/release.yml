@@ -592,36 +592,93 @@ jobs:
         run: |
           ASSETS=()
           
-          # Find assets based on platform
+          # Find assets based on platform - prioritize installers/packages
           if [ "${{ matrix.platform }}" == "windows" ]; then
+            # Windows: Prioritize MSI installer (primary package format)
             while IFS= read -r asset; do
               if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
                 echo "Found: $asset"
               fi
-            done < <(find src-tauri/target -name "*.msi" -o -name "*.msi.sig" 2>/dev/null)
+            done < <(find src-tauri/target/release/bundle/msi -name "*.msi" 2>/dev/null | head -1)
+            # Also include signature files if they exist
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found signature: $asset"
+              fi
+            done < <(find src-tauri/target -name "*.msi.sig" 2>/dev/null)
           elif [ "${{ matrix.platform }}" == "macos" ] && [ "${{ matrix.build_type }}" == "desktop" ]; then
+            # macOS: Prioritize DMG (preferred distribution format) and App bundle
+            # DMG is the installer package users download
             while IFS= read -r asset; do
               if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
                 echo "Found: $asset"
               fi
-            done < <(find src-tauri/target \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.dmg.sig" -o -name "*.app.tar.gz.sig" \) 2>/dev/null)
+            done < <(find src-tauri/target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
+            # App bundle for direct installation
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found: $asset"
+              fi
+            done < <(find src-tauri/target/release/bundle/macos -name "*.app" -type d 2>/dev/null | head -1)
+            # Include signatures if they exist
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found signature: $asset"
+              fi
+            done < <(find src-tauri/target -name "*.dmg.sig" -o -name "*.app.tar.gz.sig" 2>/dev/null)
           elif [ "${{ matrix.platform }}" == "linux" ]; then
+            # Linux: Prioritize AppImage (portable), DEB (Debian/Ubuntu), RPM (RedHat/Fedora)
+            # AppImage is portable and doesn't require installation
             while IFS= read -r asset; do
               if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
                 echo "Found: $asset"
               fi
-            done < <(find src-tauri/target \( -name "*.deb" -o -name "*.AppImage.tar.gz" -o -name "*.rpm" -o -name "*.deb.sig" -o -name "*.AppImage.tar.gz.sig" -o -name "*.rpm.sig" \) 2>/dev/null)
+            done < <(find src-tauri/target/release/bundle/appimage -name "*.AppImage.tar.gz" 2>/dev/null | head -1)
+            # DEB package for Debian/Ubuntu
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found: $asset"
+              fi
+            done < <(find src-tauri/target/release/bundle/deb -name "*.deb" 2>/dev/null | head -1)
+            # RPM package for RedHat/Fedora
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found: $asset"
+              fi
+            done < <(find src-tauri/target/release/bundle/rpm -name "*.rpm" 2>/dev/null | head -1)
+            # Include signatures if they exist
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found signature: $asset"
+              fi
+            done < <(find src-tauri/target -name "*.deb.sig" -o -name "*.AppImage.tar.gz.sig" -o -name "*.rpm.sig" 2>/dev/null)
           elif [ "${{ matrix.platform }}" == "android" ]; then
+            # Android: Prioritize APK (direct install) and AAB (Play Store)
+            # APK for direct download and installation
             while IFS= read -r asset; do
               if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
                 echo "Found: $asset"
               fi
-            done < <(find src-tauri/android/app/build/outputs \( -name "*.apk" -o -name "*.aab" \) 2>/dev/null)
+            done < <(find src-tauri/android/app/build/outputs/apk/release -name "*.apk" 2>/dev/null)
+            # AAB for Google Play Store distribution
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found: $asset"
+              fi
+            done < <(find src-tauri/android/app/build/outputs/bundle/release -name "*.aab" 2>/dev/null)
           elif [ "${{ matrix.platform }}" == "ios" ]; then
+            # iOS: IPA package (required for App Store and TestFlight)
             while IFS= read -r asset; do
               if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
@@ -634,7 +691,7 @@ jobs:
             echo "⚠️  No assets found for ${{ matrix.platform }}"
             echo "assets=" >> $GITHUB_OUTPUT
           else
-            echo "Found ${#ASSETS[@]} asset(s)"
+            echo "Found ${#ASSETS[@]} package(s) for ${{ matrix.platform }}"
             printf 'assets=%s\n' "${ASSETS[*]}" >> $GITHUB_OUTPUT
           fi
 
