@@ -31,9 +31,21 @@ Initial release
 
 
 
+## [0.1.5] - 2025-11-15
+
+- feat: improve package upload verification and error handling (0296631)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
