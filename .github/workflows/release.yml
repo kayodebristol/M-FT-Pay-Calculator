@@ -26,7 +26,10 @@ on:
       - 'v*'
     paths-ignore:
       - '**.md'
-      - '.github/**'
+      - '.github/workflows/update-manifest.yml'
+      - '.github/workflows/android-build.yml'
+      - '.github/workflows/ios-build.yml'
+      - '.github/workflows/desktop-build.yml'
       - 'docs/**'
 
 jobs:
@@ -700,16 +703,56 @@ jobs:
         shell: bash
         run: |
           ASSETS="${{ steps.find_assets.outputs.assets }}"
+          
+          if [ -z "$ASSETS" ]; then
+            echo "⚠️  No assets found to upload for ${{ matrix.platform }}"
+            exit 0
+          fi
+          
+          # Count assets
+          ASSET_COUNT=$(echo "$ASSETS" | wc -w)
+          echo "📦 Uploading $ASSET_COUNT package(s) for ${{ matrix.platform }}..."
+          
+          UPLOADED=0
+          FAILED=0
+          
           for asset in $ASSETS; do
             if [ -f "$asset" ]; then
-              echo "Uploading: $asset"
-              gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} || {
-                echo "⚠️  Failed to upload $asset, retrying..."
-                sleep 2
-                gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} || echo "❌ Failed to upload $asset after retry"
-              }
+              ASSET_NAME=$(basename "$asset")
+              ASSET_SIZE=$(du -h "$asset" | cut -f1)
+              echo "📤 Uploading: $ASSET_NAME (${ASSET_SIZE})"
+              
+              if gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} --clobber; then
+                echo "✅ Successfully uploaded: $ASSET_NAME"
+                UPLOADED=$((UPLOADED + 1))
+              else
+                echo "⚠️  Failed to upload $ASSET_NAME, retrying..."
+                sleep 3
+                if gh release upload "${{ needs.prepare-release.outputs.tag }}" "$asset" --repo ${{ github.repository }} --clobber; then
+                  echo "✅ Successfully uploaded on retry: $ASSET_NAME"
+                  UPLOADED=$((UPLOADED + 1))
+                else
+                  echo "❌ Failed to upload $ASSET_NAME after retry"
+                  FAILED=$((FAILED + 1))
+                fi
+              fi
+            else
+              echo "⚠️  Asset file not found: $asset"
+              FAILED=$((FAILED + 1))
             fi
           done
+          
+          echo ""
+          echo "📊 Upload Summary for ${{ matrix.platform }}:"
+          echo "   ✅ Uploaded: $UPLOADED"
+          echo "   ❌ Failed: $FAILED"
+          
+          if [ $FAILED -gt 0 ]; then
+            echo "⚠️  Some packages failed to upload for ${{ matrix.platform }}"
+            exit 1
+          fi
+          
+          echo "✅ All packages uploaded successfully for ${{ matrix.platform }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
