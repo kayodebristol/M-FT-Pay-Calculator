@@ -329,6 +329,7 @@ jobs:
           fetch-depth: 0
 
       - name: Verify tag and version
+        shell: bash
         run: |
           echo "Tag: ${{ needs.prepare-release.outputs.tag }}"
           echo "Version: ${{ needs.prepare-release.outputs.version }}"
@@ -442,6 +443,7 @@ jobs:
 
       - name: Initialize Android (if needed)
         if: matrix.platform == 'android'
+        shell: bash
         run: |
           if [ ! -d "src-tauri/android" ]; then
             npx tauri android init --ci || echo "Android init skipped or already exists"
@@ -449,6 +451,7 @@ jobs:
 
       - name: Initialize iOS (if needed)
         if: matrix.platform == 'ios'
+        shell: bash
         run: |
           if [ ! -d "src-tauri/ios" ]; then
             npx tauri ios init --ci || echo "iOS init skipped or already exists"
@@ -456,6 +459,7 @@ jobs:
 
       - name: Setup Android Signing
         if: matrix.platform == 'android'
+        shell: bash
         env:
           ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -469,6 +473,7 @@ jobs:
 
       - name: Setup iOS Code Signing
         if: matrix.platform == 'ios'
+        shell: bash
         env:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
           P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -498,6 +503,7 @@ jobs:
           fi
 
       - name: Build application
+        shell: bash
         run: |
           if [ "${{ matrix.platform }}" == "windows" ]; then
             npm run tauri:build:windows
