@@ -11,9 +11,22 @@ Initial release
 
 
 
+## [0.1.3] - 2025-11-15
+
+- chore: update Cargo.lock (94c4ab7)
+- feat: add Android and iOS builds to release workflow (ef1dc15)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
