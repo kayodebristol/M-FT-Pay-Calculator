@@ -37,9 +37,21 @@ Initial release
 
 
 
+## [0.1.6] - 2025-11-15
+
+- chore: trigger automatic release workflow (26aa556)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
