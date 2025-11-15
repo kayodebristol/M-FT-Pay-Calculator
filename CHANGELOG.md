@@ -18,9 +18,28 @@ Initial release
 
 
 
+## [0.1.4] - 2025-11-15
+
+- feat: prioritize proper installer/package formats for distribution (210250f)
+- Fix GitHub CLI installation permission errors in release workflow (#5) (f908f67)
+- Fix formatting in dependabot.yml (e06b3a1)
+- Fix GitHub CLI keyring installation failure in release workflow (#13) (617a299)
+- Fix workflow errors in GitHub CLI installation and Android build (#11) (aa4db46)
+- Add sudo to GitHub CLI installation commands in release workflow (#15) (351b1cb)
+- [WIP] Fix version mismatch and permission issues in build process (#9) (208ba0d)
+- [WIP] Fix shell script syntax for windows build (#7) (bc402f7)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
