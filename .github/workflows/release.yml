@@ -299,12 +299,23 @@ jobs:
           - os: windows-latest
             platform: windows
             target: x86_64-pc-windows-msvc
+            build_type: desktop
           - os: macos-latest
             platform: macos
             target: aarch64-apple-darwin
+            build_type: desktop
           - os: ubuntu-latest
             platform: linux
             target: x86_64-unknown-linux-gnu
+            build_type: desktop
+          - os: ubuntu-latest
+            platform: android
+            target: android
+            build_type: mobile
+          - os: macos-latest
+            platform: ios
+            target: ios
+            build_type: mobile
     
     permissions:
       contents: write
@@ -351,6 +362,65 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+        if: matrix.target != 'android' && matrix.target != 'ios'
+      
+      - name: Install Rust (Android)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+        if: matrix.target == 'android'
+      
+      - name: Install Rust (iOS)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,x86_64-apple-ios,aarch64-apple-ios-sim
+        if: matrix.target == 'ios'
+
+      - name: Install Rust Android targets
+        if: matrix.platform == 'android'
+        run: |
+          rustup target add aarch64-linux-android
+          rustup target add armv7-linux-androideabi
+          rustup target add i686-linux-android
+          rustup target add x86_64-linux-android
+
+      - name: Install Rust iOS targets
+        if: matrix.platform == 'ios'
+        run: |
+          rustup target add aarch64-apple-ios
+          rustup target add x86_64-apple-ios
+          rustup target add aarch64-apple-ios-sim
+
+      - name: Setup Java (Android)
+        if: matrix.platform == 'android'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK (Android)
+        if: matrix.platform == 'android'
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android environment (Android)
+        if: matrix.platform == 'android'
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/tools" >> $GITHUB_PATH
+
+      - name: Install CocoaPods (iOS)
+        if: matrix.platform == 'ios'
+        run: |
+          sudo gem install cocoapods
+          pod --version
+
+      - name: Setup Xcode (iOS)
+        if: matrix.platform == 'ios'
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
 
       - name: Install dependencies
         run: npm ci
@@ -370,15 +440,85 @@ jobs:
         run: |
           winget install --id GitHub.cli
 
+      - name: Initialize Android (if needed)
+        if: matrix.platform == 'android'
+        run: |
+          if [ ! -d "src-tauri/android" ]; then
+            npx tauri android init --ci || echo "Android init skipped or already exists"
+          fi
+
+      - name: Initialize iOS (if needed)
+        if: matrix.platform == 'ios'
+        run: |
+          if [ ! -d "src-tauri/ios" ]; then
+            npx tauri ios init --ci || echo "iOS init skipped or already exists"
+          fi
+
+      - name: Setup Android Signing
+        if: matrix.platform == 'android'
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "$ANDROID_KEYSTORE" | base64 -d > android-release-key.jks
+            echo "✅ Android keystore configured"
+          else
+            echo "⚠️  Android signing secrets not configured, building unsigned"
+          fi
+
+      - name: Setup iOS Code Signing
+        if: matrix.platform == 'ios'
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD || 'github-actions' }}
+        run: |
+          if [ -n "$BUILD_CERTIFICATE_BASE64" ] && [ -n "$BUILD_PROVISION_PROFILE_BASE64" ]; then
+            CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+            PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+            KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+            echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+            echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+            security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+            security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+            security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+            security list-keychain -d user -s $KEYCHAIN_PATH
+
+            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+            cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+            echo "✅ iOS code signing configured"
+          else
+            echo "⚠️  iOS code signing secrets not configured, building unsigned"
+          fi
+
       - name: Build application
         run: |
           if [ "${{ matrix.platform }}" == "windows" ]; then
             npm run tauri:build:windows
           elif [ "${{ matrix.platform }}" == "macos" ]; then
             npm run tauri:build:macos
-          else
+          elif [ "${{ matrix.platform }}" == "linux" ]; then
             npm run tauri:build:linux
+          elif [ "${{ matrix.platform }}" == "android" ]; then
+            if [ -n "$ANDROID_KEYSTORE" ]; then
+              export ANDROID_KEYSTORE_PATH=android-release-key.jks
+              export KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+              export KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
+              export KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'release' }}"
+            fi
+            npx tauri android build
+          elif [ "${{ matrix.platform }}" == "ios" ]; then
+            export APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
+            npx tauri ios build
           fi
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
 
       - name: Sign bundles (if configured)
         if: matrix.platform == 'windows'
@@ -400,7 +540,7 @@ jobs:
           }
 
       - name: Sign bundles (macOS)
-        if: matrix.platform == 'macos'
+        if: matrix.platform == 'macos' && matrix.build_type == 'desktop'
         env:
           MACOS_SIGNING_CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
           MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
@@ -442,20 +582,34 @@ jobs:
                 echo "Found: $asset"
               fi
             done < <(find src-tauri/target -name "*.msi" -o -name "*.msi.sig" 2>/dev/null)
-          elif [ "${{ matrix.platform }}" == "macos" ]; then
+          elif [ "${{ matrix.platform }}" == "macos" ] && [ "${{ matrix.build_type }}" == "desktop" ]; then
             while IFS= read -r asset; do
               if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
                 echo "Found: $asset"
               fi
             done < <(find src-tauri/target \( -name "*.dmg" -o -name "*.app.tar.gz" -o -name "*.dmg.sig" -o -name "*.app.tar.gz.sig" \) 2>/dev/null)
-          else
+          elif [ "${{ matrix.platform }}" == "linux" ]; then
             while IFS= read -r asset; do
               if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
                 echo "Found: $asset"
               fi
             done < <(find src-tauri/target \( -name "*.deb" -o -name "*.AppImage.tar.gz" -o -name "*.rpm" -o -name "*.deb.sig" -o -name "*.AppImage.tar.gz.sig" -o -name "*.rpm.sig" \) 2>/dev/null)
+          elif [ "${{ matrix.platform }}" == "android" ]; then
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found: $asset"
+              fi
+            done < <(find src-tauri/android/app/build/outputs \( -name "*.apk" -o -name "*.aab" \) 2>/dev/null)
+          elif [ "${{ matrix.platform }}" == "ios" ]; then
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found: $asset"
+              fi
+            done < <(find src-tauri/ios/build -name "*.ipa" 2>/dev/null)
           fi
           
           if [ ${#ASSETS[@]} -eq 0 ]; then
