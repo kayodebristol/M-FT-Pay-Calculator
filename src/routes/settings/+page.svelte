@@ -1,18 +1,26 @@
 <script lang="ts">
 	import { settings } from '$lib/stores/settings';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
 	let autoUpdate = $state(false);
 	let updateAvailable = $state(false);
 	let updateInfo = $state<any>(null);
 	let checkingUpdate = $state(false);
+	let checkError = $state<string | null>(null);
+	let checkSuccess = $state(false);
 	let appVersion = $state('');
 
+	// Subscribe to settings store to keep values in sync
+	let unsubscribe: (() => void) | null = null;
+
 	onMount(async () => {
-		// Load settings
-		settings.subscribe((s) => {
+		// Ensure settings are loaded
+		await settings.load();
+		
+		// Load settings and subscribe to changes
+		unsubscribe = settings.subscribe((s) => {
 			autoUpdate = s.autoUpdate;
-		})();
+		});
 
 		// Get app version (only in Tauri)
 		if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
@@ -33,6 +41,13 @@
 		}
 	});
 
+	// Cleanup subscription on unmount
+	onDestroy(() => {
+		if (unsubscribe) {
+			unsubscribe();
+		}
+	});
+
 	async function toggleAutoUpdate() {
 		autoUpdate = !autoUpdate;
 		await settings.update((s) => ({
@@ -49,27 +64,43 @@
 	async function checkForUpdate() {
 		// Only check for updates in Tauri environment
 		if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
-			console.warn('Update check only available in Tauri app');
+			checkError = 'Update check only available in Tauri app';
 			checkingUpdate = false;
+			checkSuccess = false;
 			return;
 		}
 
 		try {
 			checkingUpdate = true;
+			checkError = null;
+			checkSuccess = false;
+			updateAvailable = false;
+			updateInfo = null;
+
 			const { check } = await import('@tauri-apps/plugin-updater');
 			const updater = await check();
+			
 			if (updater) {
 				updateAvailable = true;
 				updateInfo = {
 					version: updater.version,
 					body: updater.body || 'Update available',
 				};
+				checkSuccess = true;
+				checkError = null;
 			} else {
+				checkSuccess = true;
+				checkError = null;
 				updateAvailable = false;
+				updateInfo = null;
 			}
-			checkingUpdate = false;
 		} catch (error) {
 			console.error('Failed to check for updates:', error);
+			checkError = error instanceof Error ? error.message : 'Failed to check for updates';
+			checkSuccess = false;
+			updateAvailable = false;
+			updateInfo = null;
+		} finally {
 			checkingUpdate = false;
 		}
 	}
@@ -139,19 +170,42 @@
 			<div class="setting-value">{appVersion}</div>
 		</div>
 
-		<div class="setting-item">
+		<div class="setting-item setting-item-compact">
 			<div class="setting-info">
 				<div class="setting-label">Check for Updates</div>
 				<p class="setting-description">Manually check for available updates</p>
 			</div>
 			<button
-				class="btn-check-update"
+				class="btn-check-update btn-compact"
 				onclick={checkForUpdate}
 				disabled={checkingUpdate}
 			>
-				{checkingUpdate ? 'Checking...' : 'Check Now'}
+				{#if checkingUpdate}
+					<span class="spinner spinner-small"></span>
+					Checking...
+				{:else}
+					Check Now
+				{/if}
 			</button>
 		</div>
+
+		{#if checkError}
+			<div class="update-status error">
+				<svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+				</svg>
+				<span>{checkError}</span>
+			</div>
+		{/if}
+
+		{#if checkSuccess && !updateAvailable && !checkingUpdate}
+			<div class="update-status success">
+				<svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor">
+					<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+				</svg>
+				<span>You're up to date! No updates available.</span>
+			</div>
+		{/if}
 
 		{#if updateAvailable && updateInfo}
 			<div class="update-notification">
@@ -174,28 +228,28 @@
 	.settings-container {
 		max-width: 800px;
 		margin: 0 auto;
-		padding: 2rem;
+		padding: 1rem;
 	}
 
 	.settings-header {
-		margin-bottom: 2rem;
+		margin-bottom: 1rem;
 		border-bottom: 2px solid #e0e0e0;
-		padding-bottom: 1rem;
+		padding-bottom: 0.75rem;
 	}
 
 	.settings-header h1 {
 		margin: 0;
-		font-size: 2rem;
+		font-size: 1.5rem;
 		color: #333;
 	}
 
 	.settings-section {
-		margin-bottom: 2rem;
+		margin-bottom: 1rem;
 	}
 
 	.section-title {
-		font-size: 1.5rem;
-		margin-bottom: 1.5rem;
+		font-size: 1.125rem;
+		margin-bottom: 0.75rem;
 		color: #333;
 	}
 
@@ -203,43 +257,44 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 1.5rem;
-		margin-bottom: 1rem;
+		padding: 0.75rem;
+		margin-bottom: 0.5rem;
 		background: #f9f9f9;
-		border-radius: 8px;
+		border-radius: 6px;
 		border: 1px solid #e0e0e0;
 	}
 
 	.setting-info {
 		flex: 1;
-		margin-right: 1rem;
+		margin-right: 0.75rem;
 	}
 
 	.setting-label {
 		display: block;
 		font-weight: 600;
-		margin-bottom: 0.5rem;
+		margin-bottom: 0.25rem;
 		color: #333;
-		font-size: 1rem;
+		font-size: 0.9rem;
 	}
 
 	.setting-description {
 		margin: 0;
 		color: #666;
-		font-size: 0.9rem;
+		font-size: 0.8rem;
 	}
 
 	.setting-value {
 		font-weight: 600;
 		color: #333;
+		font-size: 0.9rem;
 	}
 
 	/* Toggle Switch */
 	.toggle-switch {
 		position: relative;
 		display: inline-block;
-		width: 60px;
-		height: 34px;
+		width: 25px;
+		height: 14px;
 	}
 
 	.toggle-switch input {
@@ -257,16 +312,16 @@
 		bottom: 0;
 		background-color: #ccc;
 		transition: 0.4s;
-		border-radius: 34px;
+		border-radius: 14px;
 	}
 
 	.toggle-slider:before {
 		position: absolute;
 		content: '';
-		height: 26px;
-		width: 26px;
-		left: 4px;
-		bottom: 4px;
+		height: 11px;
+		width: 11px;
+		left: 1.5px;
+		bottom: 1.5px;
 		background-color: white;
 		transition: 0.4s;
 		border-radius: 50%;
@@ -277,7 +332,7 @@
 	}
 
 	input:checked + .toggle-slider:before {
-		transform: translateX(26px);
+		transform: translateX(11px);
 	}
 
 	input:disabled + .toggle-slider {
@@ -288,15 +343,25 @@
 	/* Buttons */
 	.btn-check-update,
 	.btn-install-update {
-		padding: 0.75rem 1.5rem;
+		padding: 0.5rem 1rem;
 		background-color: #0078d4;
 		color: white;
 		border: none;
-		border-radius: 6px;
-		font-size: 0.9rem;
+		border-radius: 4px;
+		font-size: 0.85rem;
 		font-weight: 600;
 		cursor: pointer;
 		transition: background-color 0.2s;
+	}
+
+	.btn-compact {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.7rem;
+	}
+
+	.setting-item-compact {
+		padding: 0.5rem;
+		margin-bottom: 0.375rem;
 	}
 
 	.btn-check-update:hover:not(:disabled),
@@ -309,41 +374,102 @@
 		cursor: not-allowed;
 	}
 
+	.btn-check-update {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	/* Loading Spinner */
+	.spinner {
+		width: 16px;
+		height: 16px;
+		border: 2px solid rgba(255, 255, 255, 0.3);
+		border-top-color: white;
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+
+	.spinner-small {
+		width: 12px;
+		height: 12px;
+		border-width: 1.5px;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	/* Update Status Messages */
+	.update-status {
+		margin-top: 0.25rem;
+		padding: 0.25rem;
+		border-radius: 3px;
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 0.7rem;
+	}
+
+	.update-status.error {
+		background: #ffebee;
+		border: 1px solid #ef5350;
+		color: #c62828;
+	}
+
+	.update-status.success {
+		background: #e8f5e9;
+		border: 1px solid #66bb6a;
+		color: #2e7d32;
+	}
+
+	.update-status svg {
+		flex-shrink: 0;
+		width: 12px;
+		height: 12px;
+	}
+
 	/* Update Notification */
 	.update-notification {
-		margin-top: 2rem;
-		padding: 1.5rem;
+		margin-top: 0.5rem;
+		padding: 0.375rem;
 		background: #e3f2fd;
-		border: 2px solid #2196f3;
-		border-radius: 8px;
+		border: 1.5px solid #2196f3;
+		border-radius: 4px;
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		gap: 1rem;
+		gap: 0.5rem;
 	}
 
 	.update-info h3 {
-		margin: 0 0 0.5rem 0;
+		margin: 0 0 0.125rem 0;
 		color: #1976d2;
+		font-size: 0.85rem;
 	}
 
 	.update-info p {
-		margin: 0 0 0.5rem 0;
+		margin: 0 0 0.125rem 0;
 		color: #333;
+		font-size: 0.75rem;
 	}
 
 	.update-notes {
-		margin-top: 0.5rem;
-		padding: 0.75rem;
+		margin-top: 0.125rem;
+		padding: 0.375rem;
 		background: white;
-		border-radius: 4px;
-		font-size: 0.9rem;
+		border-radius: 3px;
+		font-size: 0.7rem;
 		color: #555;
 		white-space: pre-wrap;
 	}
 
 	.btn-install-update {
 		flex-shrink: 0;
+		padding: 0.25rem 0.5rem;
+		font-size: 0.7rem;
 	}
 </style>
 
