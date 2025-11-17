@@ -426,6 +426,12 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
       - name: Install dependencies
         run: npm ci
 
@@ -443,18 +449,12 @@ jobs:
       - name: Install GitHub CLI (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          type -p curl >/dev/null || (sudo apt-get update && sudo apt-get install -y curl)
-          sudo mkdir -p /usr/share/keyrings
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-          apt-get update
-          apt-get install -y gh
+          brew install gh
 
       - name: Install GitHub CLI (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          winget install --id GitHub.cli
+          winget install --id GitHub.cli --accept-source-agreements --silent
 
       - name: Initialize Android (if needed)
         if: matrix.platform == 'android'
@@ -784,8 +784,8 @@ jobs:
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
           sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-          apt update
-          apt install gh -y
+          sudo apt update
+          sudo apt install gh -y
 
       - name: Get release notes
         id: get_notes
