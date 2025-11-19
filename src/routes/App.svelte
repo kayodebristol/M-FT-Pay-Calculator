@@ -40,6 +40,12 @@
 		<div class="tabs-content">
 			{#if activeTab === 'compensation'}
 				<div class="tab-panel">
+					<div class="bonus-toggle-container">
+						<label class="checkbox-label">
+							<input type="checkbox" bind:checked={includeBonuses} />
+							<span class="checkbox-text">Include bonuses in calculations</span>
+						</label>
+					</div>
 					<div class="form-grid">
 						<div class="form-group">
 							<label for="base">Base Salary (Yearly)</label>
@@ -83,7 +89,7 @@
 							<input id="hsaEmployeeContribution" type="number" bind:value={hsaEmployeeContribution} placeholder="Enter amount">
 						</div>
 						<div class="form-group">
-							<label for="hsaEmployerContribution">HSA Employer Contribution ($ yearly)</label>
+							<label for="hsaEmployerContribution">HSA Employer Contribution (Max: $1000)</label>
 							<input id="hsaEmployerContribution" type="number" bind:value={hsaEmployerContribution} placeholder="Enter amount">
 						</div>
 					</div>
@@ -151,6 +157,24 @@
 			{:else if activeResultsTab === 'paycheck'}
 				<div class="results-tab-panel">
 					<div class="paycheck-content">
+						<div class="splitter">
+              <h3 class="paycheck-subtitle">Before Tax & Deductions</h3>
+              <ul class="paycheck-list">
+                <li class="paycheck-item">
+                  <span class="paycheck-label">Yearly:</span>
+                  <span class="paycheck-value">{formatCurrency(baseComp)}</span>
+                </li>
+                <li class="paycheck-item">
+                  <span class="paycheck-label">Monthly:</span>
+                  <span class="paycheck-value">{formatCurrency((baseComp / 12).toFixed(2))}</span>
+                </li>
+                <li class="paycheck-item">
+                  <span class="paycheck-label">Semi-Monthly:</span>
+                  <span class="paycheck-value">{formatCurrency((baseComp / 24).toFixed(2))}</span>
+                </li>
+              </ul>
+            </div>
+            <div class="splitter">
 						<h3 class="paycheck-subtitle">After Tax & Deductions</h3>
 						<ul class="paycheck-list">
 							<li class="paycheck-item">
@@ -166,6 +190,7 @@
 								<span class="paycheck-value">{formatCurrency(takeHomeSemiMonthly)}</span>
 							</li>
 						</ul>
+            </div>
 					</div>
 				</div>
 			{/if}
@@ -187,6 +212,7 @@
 	let employer401KMatch = $state(DEFAULT_CALCULATOR_VALUES.employer401KMatch);
 	let hsaEmployeeContribution = $state(DEFAULT_CALCULATOR_VALUES.hsaEmployeeContribution);
 	let hsaEmployerContribution = $state(DEFAULT_CALCULATOR_VALUES.hsaEmployerContribution);
+	let includeBonuses = $state(DEFAULT_CALCULATOR_VALUES.includeBonuses);
 
 	// Active tab state
 	let activeTab = $state<'compensation' | 'benefits'>('compensation');
@@ -213,6 +239,7 @@
 			employer401KMatch = values.employer401KMatch;
 			hsaEmployeeContribution = values.hsaEmployeeContribution;
 			hsaEmployerContribution = values.hsaEmployerContribution;
+			includeBonuses = values.includeBonuses;
 			// Reset flag after a brief delay to allow reactivity to settle
 			setTimeout(() => {
 				isLoadingFromStore = false;
@@ -250,6 +277,7 @@
 				employer401KMatch,
 				hsaEmployeeContribution,
 				hsaEmployerContribution,
+				includeBonuses,
 			}));
 		}, 500); // Debounce by 500ms
 	}
@@ -259,7 +287,7 @@
 		// Access all values to create dependencies
 		const _ = base + clearanceBonus + additionalBonus + startingBonus + 
 			stockBonus + relocationBonus + contribution401K + employer401KMatch + 
-			hsaEmployeeContribution + hsaEmployerContribution;
+			hsaEmployeeContribution + hsaEmployerContribution + (includeBonuses ? 1 : 0);
 		saveValues();
 	});
 
@@ -281,7 +309,12 @@
 	let hsaEmployerContributionNum = $derived(parseFloat(hsaEmployerContribution) || 0);
 
 	// Base compensation (before employer contributions)
-	let baseComp = $derived(baseNum + (baseNum * (clearanceBonusF/100)) + (baseNum * (additionalBonusNum/100)) + relocationBonusNum + startingBonusNum + (stockBonusNum / 4));
+	let baseComp = $derived(baseNum + 
+		(includeBonuses ? (baseNum * (clearanceBonusF/100)) : 0) + 
+		(includeBonuses ? (baseNum * (additionalBonusNum/100)) : 0) + 
+		(includeBonuses ? relocationBonusNum : 0) + 
+		(includeBonuses ? startingBonusNum : 0) + 
+		(includeBonuses ? (stockBonusNum / 4) : 0));
 
 	// 401K calculations
 	let annual401KEmployee = $derived((baseNum * (contribution401KNum / 100)).toFixed(2));

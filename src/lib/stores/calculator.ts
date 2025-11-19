@@ -2,16 +2,17 @@ import { writable } from 'svelte/store';
 
 // Default calculator values
 export const DEFAULT_CALCULATOR_VALUES = {
-	base: '100000',
-	clearanceBonus: '15',
-	additionalBonus: '10',
+	base: '0',
+	clearanceBonus: '0',
+	additionalBonus: '0',
 	startingBonus: '0',
-	stockBonus: '20000',
+	stockBonus: '0',
 	relocationBonus: '0',
 	contribution401K: '0',
 	employer401KMatch: '50',
-	hsaEmployeeContribution: '8550',
-	hsaEmployerContribution: '1000',
+	hsaEmployeeContribution: '0',
+	hsaEmployerContribution: '0',
+	includeBonuses: true,
 };
 
 // Check if we're in Tauri environment
