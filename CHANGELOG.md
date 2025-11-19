@@ -43,9 +43,23 @@ Initial release
 
 
 
+## [0.1.7] - 2025-11-19
+
+- Add bonus toggle checkbox to control inclusion of bonuses in calculations (4d0128a)
+- Fix release workflow to build and upload platform binaries (#17) (d41a914)
+- Add comprehensive caching to fix long-running GitHub Actions builds (#19) (301d3cd)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
