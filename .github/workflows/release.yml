@@ -655,22 +655,31 @@ jobs:
         run: |
           ASSETS=()
           
-          # Find assets based on platform - prioritize installers/packages
+          # Windows platform uses PowerShell for better path handling
           if [ "${{ matrix.platform }}" == "windows" ]; then
-            # Windows: Prioritize MSI installer (primary package format)
-            while IFS= read -r asset; do
-              if [ -f "$asset" ]; then
+            # Use PowerShell to find MSI files on Windows
+            ASSETS_STR=$(pwsh -Command "
+              `$assets = @()
+              `$msiDir = 'src-tauri\target\release\bundle\msi'
+              if (Test-Path `$msiDir) {
+                `$msiFiles = Get-ChildItem -Path `$msiDir -Filter '*.msi' -Recurse -File -ErrorAction SilentlyContinue
+                foreach (`$file in `$msiFiles) { `$assets += `$file.FullName }
+              }
+              if (`$assets.Count -eq 0) {
+                `$msiFiles = Get-ChildItem -Path 'src-tauri\target\release' -Filter '*.msi' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                foreach (`$file in `$msiFiles) { `$assets += `$file.FullName }
+              }
+              `$sigFiles = Get-ChildItem -Path 'src-tauri\target' -Filter '*.msi.sig' -Recurse -File -ErrorAction SilentlyContinue
+              foreach (`$file in `$sigFiles) { `$assets += `$file.FullName }
+              (`$assets -join ' ')
+            ")
+            if [ -n "$ASSETS_STR" ]; then
+              for asset in $ASSETS_STR; do
                 ASSETS+=("$asset")
                 echo "Found: $asset"
-              fi
-            done < <(find src-tauri/target/release/bundle/msi -name "*.msi" 2>/dev/null | head -1)
-            # Also include signature files if they exist
-            while IFS= read -r asset; do
-              if [ -f "$asset" ]; then
-                ASSETS+=("$asset")
-                echo "Found signature: $asset"
-              fi
-            done < <(find src-tauri/target -name "*.msi.sig" 2>/dev/null)
+              done
+            fi
+          # Find assets based on platform - prioritize installers/packages
           elif [ "${{ matrix.platform }}" == "macos" ] && [ "${{ matrix.build_type }}" == "desktop" ]; then
             # macOS: Prioritize DMG (preferred distribution format) and App bundle
             # DMG is the installer package users download
@@ -758,8 +767,65 @@ jobs:
             printf 'assets=%s\n' "${ASSETS[*]}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Upload release assets
-        if: steps.find_assets.outputs.assets != ''
+      - name: Upload release assets (Windows)
+        if: matrix.platform == 'windows' && steps.find_assets.outputs.assets != ''
+        shell: pwsh
+        run: |
+          $assetsString = "${{ steps.find_assets.outputs.assets }}"
+          
+          if ([string]::IsNullOrWhiteSpace($assetsString)) {
+            Write-Host "⚠️  No assets found to upload for Windows"
+            exit 0
+          }
+          
+          $assets = $assetsString -split ' '
+          Write-Host "📦 Uploading $($assets.Count) package(s) for Windows..."
+          
+          $uploaded = 0
+          $failed = 0
+          
+          foreach ($asset in $assets) {
+            if (Test-Path $asset) {
+              $assetName = Split-Path -Leaf $asset
+              $assetSize = (Get-Item $asset).Length / 1MB
+              Write-Host "📤 Uploading: $assetName ($([math]::Round($assetSize, 2)) MB)"
+              
+              if (gh release upload "${{ needs.prepare-release.outputs.tag }}" $asset --repo ${{ github.repository }} --clobber) {
+                Write-Host "✅ Successfully uploaded: $assetName"
+                $uploaded++
+              } else {
+                Write-Host "⚠️  Failed to upload $assetName, retrying..."
+                Start-Sleep -Seconds 3
+                if (gh release upload "${{ needs.prepare-release.outputs.tag }}" $asset --repo ${{ github.repository }} --clobber) {
+                  Write-Host "✅ Successfully uploaded on retry: $assetName"
+                  $uploaded++
+                } else {
+                  Write-Host "❌ Failed to upload $assetName after retry"
+                  $failed++
+                }
+              }
+            } else {
+              Write-Host "⚠️  Asset file not found: $asset"
+              $failed++
+            }
+          }
+          
+          Write-Host ""
+          Write-Host "📊 Upload Summary for Windows:"
+          Write-Host "   ✅ Uploaded: $uploaded"
+          Write-Host "   ❌ Failed: $failed"
+          
+          if ($failed -gt 0) {
+            Write-Host "⚠️  Some packages failed to upload for Windows"
+            exit 1
+          }
+          
+          Write-Host "✅ All packages uploaded successfully for Windows"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets (Other platforms)
+        if: matrix.platform != 'windows' && steps.find_assets.outputs.assets != ''
         shell: bash
         run: |
           ASSETS="${{ steps.find_assets.outputs.assets }}"
@@ -821,7 +887,7 @@ jobs:
     needs: [prepare-release, build-and-release]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     if: always() && (needs.prepare-release.result == 'success')
     
     steps:
@@ -870,54 +936,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create or update Gist with manifest
-        continue-on-error: true
-        env:
-          # Use PAT if available (needed for Gist access), fallback to GITHUB_TOKEN
-          GH_TOKEN: ${{ secrets.GITHUB_PAT }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create or update latest release
         run: |
-          # Use PAT if available, otherwise use GITHUB_TOKEN (but it won't work for Gists)
-          if [ -z "$GH_TOKEN" ]; then
-            GH_TOKEN="$GITHUB_TOKEN"
+          # Check if latest release exists
+          LATEST_RELEASE=$(gh release view latest --repo ${{ github.repository }} --json tagName --jq '.tagName' 2>/dev/null || echo "")
+          
+          if [ -n "$LATEST_RELEASE" ]; then
+            echo "Updating existing 'latest' release..."
+            # Delete the old latest release
+            gh release delete latest --repo ${{ github.repository }} --yes || true
           fi
           
-          # GITHUB_TOKEN doesn't have gist permissions, so skip if no PAT
-          if [ -z "${{ secrets.GITHUB_PAT }}" ]; then
-            echo "⚠️  GITHUB_PAT secret not found. Skipping Gist update."
-            echo "📋 Manifest is available at: https://github.com/${{ github.repository }}/releases/download/${{ needs.prepare-release.outputs.tag }}/latest.json"
-            echo ""
-            echo "💡 To enable Gist updates, create a GitHub Personal Access Token with 'gist' scope"
-            echo "   and add it as a repository secret named 'GITHUB_PAT'"
-            exit 0
-          fi
+          # Create new latest release pointing to the current release tag
+          gh release create latest \
+            --repo ${{ github.repository }} \
+            --target ${{ needs.prepare-release.outputs.tag }} \
+            --title "Latest Release" \
+            --notes "This release always points to the latest version. Current version: ${{ needs.prepare-release.outputs.tag }}" \
+            --draft=false \
+            --prerelease=false || echo "Release 'latest' may already exist"
           
-          if [ -n "${{ secrets.UPDATE_MANIFEST_GIST_ID }}" ]; then
-            echo "Updating existing Gist: ${{ secrets.UPDATE_MANIFEST_GIST_ID }}"
-            gh gist edit ${{ secrets.UPDATE_MANIFEST_GIST_ID }} latest.json --filename latest.json || {
-              echo "⚠️  Failed to update Gist, creating new one..."
-              GIST_OUTPUT=$(gh gist create latest.json --filename latest.json --public)
-              GIST_ID=$(echo "$GIST_OUTPUT" | grep -oP 'gist.github.com/[^/]+/\K[^/]+' || echo "")
-              if [ -n "$GIST_ID" ]; then
-                echo "✅ Created new Gist: $GIST_ID"
-                echo "⚠️  Update secret UPDATE_MANIFEST_GIST_ID to: $GIST_ID"
-              fi
-            }
-            echo "✅ Updated Gist"
-            echo "📋 Manifest URL: https://gist.githubusercontent.com/${{ github.repository_owner }}/${{ secrets.UPDATE_MANIFEST_GIST_ID }}/raw/latest.json"
-          else
-            echo "Creating new Gist..."
-            GIST_OUTPUT=$(gh gist create latest.json --filename latest.json --public)
-            GIST_ID=$(echo "$GIST_OUTPUT" | grep -oP 'gist.github.com/[^/]+/\K[^/]+' || echo "")
-            if [ -n "$GIST_ID" ]; then
-              echo "✅ Created Gist: $GIST_ID"
-              echo "📋 Manifest URL: https://gist.githubusercontent.com/${{ github.repository_owner }}/$GIST_ID/raw/latest.json"
-              echo ""
-              echo "⚠️  IMPORTANT: Add this to your repository secrets:"
-              echo "   Secret name: UPDATE_MANIFEST_GIST_ID"
-              echo "   Secret value: $GIST_ID"
-            else
-              echo "❌ Failed to extract Gist ID from output:"
-              echo "$GIST_OUTPUT"
-            fi
-          fi
+          # Upload latest.json to the latest release
+          gh release upload latest latest.json --repo ${{ github.repository }} --clobber || true
+          
+          echo "✅ Created/updated 'latest' release pointing to ${{ needs.prepare-release.outputs.tag }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output update endpoint info
+        run: |
+          echo "✅ Update manifest uploaded to release"
+          echo "📋 This release manifest: https://github.com/${{ github.repository }}/releases/download/${{ needs.prepare-release.outputs.tag }}/latest.json"
+          echo "🌐 Latest release endpoint: https://github.com/${{ github.repository }}/releases/download/latest/latest.json"
+          echo ""
+          echo "💡 The updater is configured to use the 'latest' tag endpoint, which automatically"
+          echo "   points to the most recent release's latest.json file."

@@ -77,7 +77,9 @@
 			updateAvailable = false;
 			updateInfo = null;
 
-			const { check } = await import('@tauri-apps/plugin-updater');
+			// Use variable to make import truly dynamic (prevents Vite analysis)
+			const updaterPath = '@tauri-apps/plugin-updater';
+			const { check } = await import(updaterPath);
 			const updater = await check();
 			
 			if (updater) {
@@ -113,7 +115,9 @@
 		}
 
 		try {
-			const { check } = await import('@tauri-apps/plugin-updater');
+			// Use variable to make import truly dynamic (prevents Vite analysis)
+			const updaterPath = '@tauri-apps/plugin-updater';
+			const { check } = await import(updaterPath);
 			const updater = await check();
 			if (updater) {
 				await updater.downloadAndInstall();
