@@ -601,8 +601,10 @@ jobs:
           fi
 
       - name: Build application
+        id: build
         shell: bash
         run: |
+          BUILD_STATUS="success"
           if [ "${{ matrix.platform }}" == "windows" ]; then
             npm run tauri:build:windows
           elif [ "${{ matrix.platform }}" == "macos" ]; then
@@ -616,27 +618,30 @@ jobs:
               export KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
               export KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'release' }}"
             fi
-            npx tauri android build --apk || {
-              echo "⚠️  Android build failed, skipping..."
-              exit 0
-            }
+            if ! npx tauri android build --apk; then
+              echo "⚠️  Android build failed"
+              BUILD_STATUS="failed"
+            fi
           elif [ "${{ matrix.platform }}" == "ios" ]; then
             if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ] || [ -z "${{ secrets.APPLE_PROVISIONING_PROFILE }}" ]; then
               echo "⚠️  iOS code signing secrets not configured, skipping iOS build"
               echo "To enable iOS builds, configure APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_PROVISIONING_PROFILE, and APPLE_TEAM_ID secrets"
-              exit 0
+              BUILD_STATUS="skipped"
+            else
+              export APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
+              if ! npx tauri ios build; then
+                echo "⚠️  iOS build failed"
+                BUILD_STATUS="failed"
+              fi
             fi
-            export APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
-            npx tauri ios build || {
-              echo "⚠️  iOS build failed, skipping..."
-              exit 0
-            }
           fi
+          echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
         env:
           ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        continue-on-error: true
 
       - name: Sign bundles (if configured)
-        if: matrix.platform == 'windows'
+        if: matrix.platform == 'windows' && steps.build.outputs.status == 'success'
         env:
           WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
           WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
@@ -655,7 +660,7 @@ jobs:
           }
 
       - name: Sign bundles (macOS)
-        if: matrix.platform == 'macos' && matrix.build_type == 'desktop'
+        if: matrix.platform == 'macos' && matrix.build_type == 'desktop' && steps.build.outputs.status == 'success'
         env:
           MACOS_SIGNING_CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
           MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
@@ -668,6 +673,7 @@ jobs:
           echo "macOS signing not yet implemented"
 
       - name: Sign update files
+        if: steps.build.outputs.status == 'success'
         shell: bash
         env:
           TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
@@ -685,6 +691,7 @@ jobs:
           bash scripts/sign-update-files.sh || echo "Signing failed, continuing..."
 
       - name: Find release assets
+        if: steps.build.outputs.status == 'success'
         id: find_assets
         shell: bash
         run: |
@@ -804,7 +811,7 @@ jobs:
           fi
 
       - name: Upload release assets (Windows)
-        if: matrix.platform == 'windows' && steps.find_assets.outputs.assets != ''
+        if: matrix.platform == 'windows' && steps.build.outputs.status == 'success' && steps.find_assets.outputs.assets != ''
         shell: pwsh
         run: |
           $assetsString = "${{ steps.find_assets.outputs.assets }}"
@@ -861,7 +868,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload release assets (Other platforms)
-        if: matrix.platform != 'windows' && steps.find_assets.outputs.assets != ''
+        if: matrix.platform != 'windows' && steps.build.outputs.status == 'success' && steps.find_assets.outputs.assets != ''
         shell: bash
         run: |
           ASSETS="${{ steps.find_assets.outputs.assets }}"
@@ -917,6 +924,30 @@ jobs:
           echo "✅ All packages uploaded successfully for ${{ matrix.platform }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Build Summary for ${{ matrix.platform }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          BUILD_STATUS="${{ steps.build.outputs.status }}"
+          if [ "$BUILD_STATUS" == "success" ]; then
+            echo "✅ **Build Status:** Success" >> $GITHUB_STEP_SUMMARY
+          elif [ "$BUILD_STATUS" == "skipped" ]; then
+            echo "⏭️ **Build Status:** Skipped (missing required secrets)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Build Status:** Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.find_assets.outputs.assets }}" ]; then
+            echo "### Artifacts Found:" >> $GITHUB_STEP_SUMMARY
+            for asset in ${{ steps.find_assets.outputs.assets }}; do
+              echo "- $(basename $asset)" >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "No artifacts found for this platform." >> $GITHUB_STEP_SUMMARY
+          fi
 
   generate-update-manifest:
     name: Generate Update Manifest
