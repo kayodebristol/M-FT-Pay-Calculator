@@ -417,6 +417,7 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             src-tauri/android/.gradle
+            # gen/android/.gradle is created after tauri android init
             src-tauri/gen/android/.gradle
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
@@ -440,6 +441,7 @@ jobs:
           path: |
             ~/Library/Caches/CocoaPods
             src-tauri/ios/Pods
+            # gen/apple/Pods is created after tauri ios init
             src-tauri/gen/apple/Pods
           key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
           restore-keys: |
@@ -944,12 +946,12 @@ jobs:
           ASSETS="${{ steps.find_assets.outputs.assets }}"
           if [ -n "$ASSETS" ]; then
             echo "### Artifacts Found:" >> $GITHUB_STEP_SUMMARY
-            # Use process substitution to avoid subshell issue
-            while IFS= read -r asset; do
+            # Use for loop with word splitting (works for space-separated paths)
+            for asset in $ASSETS; do
               if [ -n "$asset" ]; then
                 echo "- $(basename "$asset")" >> $GITHUB_STEP_SUMMARY
               fi
-            done <<< "$(echo "$ASSETS" | tr ' ' '\n')"
+            done
           else
             echo "No artifacts found for this platform." >> $GITHUB_STEP_SUMMARY
           fi
