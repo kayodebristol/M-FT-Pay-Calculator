@@ -618,7 +618,8 @@ jobs:
               export KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
               export KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'release' }}"
             fi
-            if ! npx tauri android build --apk; then
+            # Build both APK (for direct install) and AAB (for Play Store)
+            if ! npx tauri android build; then
               echo "⚠️  Android build failed"
               BUILD_STATUS="failed"
             fi
@@ -940,10 +941,13 @@ jobs:
             echo "❌ **Build Status:** Failed" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ steps.find_assets.outputs.assets }}" ]; then
+          ASSETS="${{ steps.find_assets.outputs.assets }}"
+          if [ -n "$ASSETS" ]; then
             echo "### Artifacts Found:" >> $GITHUB_STEP_SUMMARY
-            for asset in ${{ steps.find_assets.outputs.assets }}; do
-              echo "- $(basename $asset)" >> $GITHUB_STEP_SUMMARY
+            echo "$ASSETS" | tr ' ' '\n' | while read -r asset; do
+              if [ -n "$asset" ]; then
+                echo "- $(basename "$asset")" >> $GITHUB_STEP_SUMMARY
+              fi
             done
           else
             echo "No artifacts found for this platform." >> $GITHUB_STEP_SUMMARY
