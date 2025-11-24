@@ -618,7 +618,7 @@ jobs:
               export KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
               export KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'release' }}"
             fi
-            # Build both APK (for direct install) and AAB (for Play Store)
+            # Build Android release (default produces AAB, can be configured in Cargo.toml)
             if ! npx tauri android build; then
               echo "⚠️  Android build failed"
               BUILD_STATUS="failed"
@@ -944,11 +944,12 @@ jobs:
           ASSETS="${{ steps.find_assets.outputs.assets }}"
           if [ -n "$ASSETS" ]; then
             echo "### Artifacts Found:" >> $GITHUB_STEP_SUMMARY
-            echo "$ASSETS" | tr ' ' '\n' | while read -r asset; do
+            # Use process substitution to avoid subshell issue
+            while IFS= read -r asset; do
               if [ -n "$asset" ]; then
                 echo "- $(basename "$asset")" >> $GITHUB_STEP_SUMMARY
               fi
-            done
+            done <<< "$(echo "$ASSETS" | tr ' ' '\n')"
           else
             echo "No artifacts found for this platform." >> $GITHUB_STEP_SUMMARY
           fi
