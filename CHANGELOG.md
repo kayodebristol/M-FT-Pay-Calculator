@@ -51,9 +51,21 @@ Initial release
 
 
 
+## [0.1.8] - 2025-11-24
+
+- fix: improve update mechanism and Windows MSI upload workflow (94d023d)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
