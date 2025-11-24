@@ -57,9 +57,21 @@ Initial release
 
 
 
+## [0.1.9] - 2025-11-24
+
+- chore: bump version to 0.1.8 (cdf4140)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
