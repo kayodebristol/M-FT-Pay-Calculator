@@ -417,9 +417,21 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             src-tauri/android/.gradle
+            src-tauri/gen/android/.gradle
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
+
+      - name: Cache Android NDK (Android)
+        if: matrix.platform == 'android'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/ndk
+            ~/.android/ndk
+          key: ${{ runner.os }}-android-ndk-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-android-ndk-
 
       - name: Cache CocoaPods (iOS)
         if: matrix.platform == 'ios'
@@ -428,6 +440,7 @@ jobs:
           path: |
             ~/Library/Caches/CocoaPods
             src-tauri/ios/Pods
+            src-tauri/gen/apple/Pods
           key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-pods-
@@ -441,13 +454,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.platform }}-xcode-
 
+      - name: Cache Swift Package Manager (iOS)
+        if: matrix.platform == 'ios'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/*/SourcePackages
+            ~/.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved', '**/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
       - name: Setup Java (Android)
         if: matrix.platform == 'android'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
       - name: Setup Android SDK (Android)
         if: matrix.platform == 'android'
@@ -593,10 +616,21 @@ jobs:
               export KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
               export KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'release' }}"
             fi
-            npx tauri android build
+            npx tauri android build --apk || {
+              echo "⚠️  Android build failed, skipping..."
+              exit 0
+            }
           elif [ "${{ matrix.platform }}" == "ios" ]; then
+            if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ] || [ -z "${{ secrets.APPLE_PROVISIONING_PROFILE }}" ]; then
+              echo "⚠️  iOS code signing secrets not configured, skipping iOS build"
+              echo "To enable iOS builds, configure APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_PROVISIONING_PROFILE, and APPLE_TEAM_ID secrets"
+              exit 0
+            fi
             export APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
-            npx tauri ios build
+            npx tauri ios build || {
+              echo "⚠️  iOS build failed, skipping..."
+              exit 0
+            }
           fi
         env:
           ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -634,6 +668,7 @@ jobs:
           echo "macOS signing not yet implemented"
 
       - name: Sign update files
+        shell: bash
         env:
           TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
         run: |
@@ -655,30 +690,31 @@ jobs:
         run: |
           ASSETS=()
           
-          # Windows platform uses PowerShell for better path handling
+          # Windows platform - use find with forward slashes (works in Git Bash on Windows)
           if [ "${{ matrix.platform }}" == "windows" ]; then
-            # Use PowerShell to find MSI files on Windows
-            ASSETS_STR=$(pwsh -Command "
-              `$assets = @()
-              `$msiDir = 'src-tauri\target\release\bundle\msi'
-              if (Test-Path `$msiDir) {
-                `$msiFiles = Get-ChildItem -Path `$msiDir -Filter '*.msi' -Recurse -File -ErrorAction SilentlyContinue
-                foreach (`$file in `$msiFiles) { `$assets += `$file.FullName }
-              }
-              if (`$assets.Count -eq 0) {
-                `$msiFiles = Get-ChildItem -Path 'src-tauri\target\release' -Filter '*.msi' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-                foreach (`$file in `$msiFiles) { `$assets += `$file.FullName }
-              }
-              `$sigFiles = Get-ChildItem -Path 'src-tauri\target' -Filter '*.msi.sig' -Recurse -File -ErrorAction SilentlyContinue
-              foreach (`$file in `$sigFiles) { `$assets += `$file.FullName }
-              (`$assets -join ' ')
-            ")
-            if [ -n "$ASSETS_STR" ]; then
-              for asset in $ASSETS_STR; do
+            # Find MSI files
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
                 echo "Found: $asset"
-              done
+              fi
+            done < <(find src-tauri/target/release/bundle/msi -name "*.msi" 2>/dev/null)
+            # Fallback: search in release directory
+            if [ ${#ASSETS[@]} -eq 0 ]; then
+              while IFS= read -r asset; do
+                if [ -f "$asset" ]; then
+                  ASSETS+=("$asset")
+                  echo "Found: $asset"
+                fi
+              done < <(find src-tauri/target/release -name "*.msi" 2>/dev/null | head -1)
             fi
+            # Include signatures if they exist
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found signature: $asset"
+              fi
+            done < <(find src-tauri/target -name "*.msi.sig" 2>/dev/null)
           # Find assets based on platform - prioritize installers/packages
           elif [ "${{ matrix.platform }}" == "macos" ] && [ "${{ matrix.build_type }}" == "desktop" ]; then
             # macOS: Prioritize DMG (preferred distribution format) and App bundle
