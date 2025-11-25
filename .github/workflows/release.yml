@@ -417,9 +417,22 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             src-tauri/android/.gradle
+            # gen/android/.gradle is created after tauri android init
+            src-tauri/gen/android/.gradle
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
+
+      - name: Cache Android NDK (Android)
+        if: matrix.platform == 'android'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_HOME }}/ndk
+            ~/.android/ndk
+          key: ${{ runner.os }}-android-ndk-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-android-ndk-
 
       - name: Cache CocoaPods (iOS)
         if: matrix.platform == 'ios'
@@ -428,6 +441,8 @@ jobs:
           path: |
             ~/Library/Caches/CocoaPods
             src-tauri/ios/Pods
+            # gen/apple/Pods is created after tauri ios init
+            src-tauri/gen/apple/Pods
           key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
           restore-keys: |
             ${{ runner.os }}-pods-
@@ -441,13 +456,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.platform }}-xcode-
 
+      - name: Cache Swift Package Manager (iOS)
+        if: matrix.platform == 'ios'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/*/SourcePackages
+            ~/.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved', '**/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
       - name: Setup Java (Android)
         if: matrix.platform == 'android'
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
       - name: Setup Android SDK (Android)
         if: matrix.platform == 'android'
@@ -578,8 +603,10 @@ jobs:
           fi
 
       - name: Build application
+        id: build
         shell: bash
         run: |
+          BUILD_STATUS="success"
           if [ "${{ matrix.platform }}" == "windows" ]; then
             npm run tauri:build:windows
           elif [ "${{ matrix.platform }}" == "macos" ]; then
@@ -593,16 +620,31 @@ jobs:
               export KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
               export KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'release' }}"
             fi
-            npx tauri android build
+            # Build Android release (default produces AAB, can be configured in Cargo.toml)
+            if ! npx tauri android build; then
+              echo "⚠️  Android build failed"
+              BUILD_STATUS="failed"
+            fi
           elif [ "${{ matrix.platform }}" == "ios" ]; then
-            export APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
-            npx tauri ios build
+            if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ] || [ -z "${{ secrets.APPLE_PROVISIONING_PROFILE }}" ]; then
+              echo "⚠️  iOS code signing secrets not configured, skipping iOS build"
+              echo "To enable iOS builds, configure APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_PROVISIONING_PROFILE, and APPLE_TEAM_ID secrets"
+              BUILD_STATUS="skipped"
+            else
+              export APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
+              if ! npx tauri ios build; then
+                echo "⚠️  iOS build failed"
+                BUILD_STATUS="failed"
+              fi
+            fi
           fi
+          echo "status=$BUILD_STATUS" >> $GITHUB_OUTPUT
         env:
           ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        continue-on-error: true
 
       - name: Sign bundles (if configured)
-        if: matrix.platform == 'windows'
+        if: matrix.platform == 'windows' && steps.build.outputs.status == 'success'
         env:
           WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
           WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
@@ -621,7 +663,7 @@ jobs:
           }
 
       - name: Sign bundles (macOS)
-        if: matrix.platform == 'macos' && matrix.build_type == 'desktop'
+        if: matrix.platform == 'macos' && matrix.build_type == 'desktop' && steps.build.outputs.status == 'success'
         env:
           MACOS_SIGNING_CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
           MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
@@ -634,6 +676,8 @@ jobs:
           echo "macOS signing not yet implemented"
 
       - name: Sign update files
+        if: steps.build.outputs.status == 'success'
+        shell: bash
         env:
           TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
         run: |
@@ -650,35 +694,37 @@ jobs:
           bash scripts/sign-update-files.sh || echo "Signing failed, continuing..."
 
       - name: Find release assets
+        if: steps.build.outputs.status == 'success'
         id: find_assets
         shell: bash
         run: |
           ASSETS=()
           
-          # Windows platform uses PowerShell for better path handling
+          # Windows platform - use find with forward slashes (works in Git Bash on Windows)
           if [ "${{ matrix.platform }}" == "windows" ]; then
-            # Use PowerShell to find MSI files on Windows
-            ASSETS_STR=$(pwsh -Command "
-              `$assets = @()
-              `$msiDir = 'src-tauri\target\release\bundle\msi'
-              if (Test-Path `$msiDir) {
-                `$msiFiles = Get-ChildItem -Path `$msiDir -Filter '*.msi' -Recurse -File -ErrorAction SilentlyContinue
-                foreach (`$file in `$msiFiles) { `$assets += `$file.FullName }
-              }
-              if (`$assets.Count -eq 0) {
-                `$msiFiles = Get-ChildItem -Path 'src-tauri\target\release' -Filter '*.msi' -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
-                foreach (`$file in `$msiFiles) { `$assets += `$file.FullName }
-              }
-              `$sigFiles = Get-ChildItem -Path 'src-tauri\target' -Filter '*.msi.sig' -Recurse -File -ErrorAction SilentlyContinue
-              foreach (`$file in `$sigFiles) { `$assets += `$file.FullName }
-              (`$assets -join ' ')
-            ")
-            if [ -n "$ASSETS_STR" ]; then
-              for asset in $ASSETS_STR; do
+            # Find MSI files
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
                 ASSETS+=("$asset")
                 echo "Found: $asset"
-              done
+              fi
+            done < <(find src-tauri/target/release/bundle/msi -name "*.msi" 2>/dev/null)
+            # Fallback: search in release directory
+            if [ ${#ASSETS[@]} -eq 0 ]; then
+              while IFS= read -r asset; do
+                if [ -f "$asset" ]; then
+                  ASSETS+=("$asset")
+                  echo "Found: $asset"
+                fi
+              done < <(find src-tauri/target/release -name "*.msi" 2>/dev/null | head -1)
             fi
+            # Include signatures if they exist
+            while IFS= read -r asset; do
+              if [ -f "$asset" ]; then
+                ASSETS+=("$asset")
+                echo "Found signature: $asset"
+              fi
+            done < <(find src-tauri/target -name "*.msi.sig" 2>/dev/null)
           # Find assets based on platform - prioritize installers/packages
           elif [ "${{ matrix.platform }}" == "macos" ] && [ "${{ matrix.build_type }}" == "desktop" ]; then
             # macOS: Prioritize DMG (preferred distribution format) and App bundle
@@ -768,7 +814,7 @@ jobs:
           fi
 
       - name: Upload release assets (Windows)
-        if: matrix.platform == 'windows' && steps.find_assets.outputs.assets != ''
+        if: matrix.platform == 'windows' && steps.build.outputs.status == 'success' && steps.find_assets.outputs.assets != ''
         shell: pwsh
         run: |
           $assetsString = "${{ steps.find_assets.outputs.assets }}"
@@ -825,7 +871,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload release assets (Other platforms)
-        if: matrix.platform != 'windows' && steps.find_assets.outputs.assets != ''
+        if: matrix.platform != 'windows' && steps.build.outputs.status == 'success' && steps.find_assets.outputs.assets != ''
         shell: bash
         run: |
           ASSETS="${{ steps.find_assets.outputs.assets }}"
@@ -881,6 +927,34 @@ jobs:
           echo "✅ All packages uploaded successfully for ${{ matrix.platform }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Build Summary for ${{ matrix.platform }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          BUILD_STATUS="${{ steps.build.outputs.status }}"
+          if [ "$BUILD_STATUS" == "success" ]; then
+            echo "✅ **Build Status:** Success" >> $GITHUB_STEP_SUMMARY
+          elif [ "$BUILD_STATUS" == "skipped" ]; then
+            echo "⏭️ **Build Status:** Skipped (missing required secrets)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Build Status:** Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          ASSETS="${{ steps.find_assets.outputs.assets }}"
+          if [ -n "$ASSETS" ]; then
+            echo "### Artifacts Found:" >> $GITHUB_STEP_SUMMARY
+            # Use for loop with word splitting (works for space-separated paths)
+            for asset in $ASSETS; do
+              if [ -n "$asset" ]; then
+                echo "- $(basename "$asset")" >> $GITHUB_STEP_SUMMARY
+              fi
+            done
+          else
+            echo "No artifacts found for this platform." >> $GITHUB_STEP_SUMMARY
+          fi
 
   generate-update-manifest:
     name: Generate Update Manifest
