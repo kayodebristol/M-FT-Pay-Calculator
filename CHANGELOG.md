@@ -63,9 +63,21 @@ Initial release
 
 
 
+## [0.1.10] - 2025-11-25
+
+- Fix release workflow: build issues, asset upload, and add precache strategy (#22) (44cb6e7)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
