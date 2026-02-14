@@ -69,9 +69,21 @@ Initial release
 
 
 
+## [0.1.11] - 2026-02-14
+
+- chore(deps-dev): bump @sveltejs/kit (#23) (6a60f1d)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
