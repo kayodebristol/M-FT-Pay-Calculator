@@ -75,9 +75,21 @@ Initial release
 
 
 
+## [0.1.12] - 2026-02-14
+
+- chore(deps): bump bytes (#24) (4c1dc49)
+
+
+
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+## Added
 
 ### Changed
 
